@@ -1,6 +1,6 @@
 exports.main = async (event, context) => {
   const cloudbase = require('@cloudbase/node-sdk')
-  const app = cloudbase.init({ env: 'trial-sh-d1gqznm4577d6a062' })
+  const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
   const db = app.database()
 
   // 鉴权
@@ -16,34 +16,33 @@ exports.main = async (event, context) => {
   }
 
   try {
-    const result = await db.collection('season_summaries')
-      .orderBy('updated_at', 'desc')
-      .limit(1)
+    const now = new Date()
+    const year = parseInt(query.year) || now.getFullYear()
+    const month = parseInt(query.month) || (now.getMonth() + 1)
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`
+
+    // 月度汇总
+    const summaryRes = await db.collection('live_streams')
+      .where({ type: 'monthly_summary', month_key: monthKey })
       .get()
 
-    if (result.data.length === 0) {
-      return {
-        statusCode: 404,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ code: 404, message: 'No data yet.', data: null })
-      }
-    }
+    // 当月直播记录
+    const streamsRes = await db.collection('live_streams')
+      .where({ year, month })
+      .orderBy('stream_date', 'desc')
+      .get()
 
-    const doc = result.data[0]
+    const summary = summaryRes.data.length > 0 ? summaryRes.data[0] : null
+    const streams = (streamsRes.data || [])
+      .filter(s => s.type !== 'monthly_summary')
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         code: 200,
         message: 'ok',
-        data: {
-          season: doc.season,
-          season_name: doc.season_name,
-          player_name: doc.player_name,
-          team_name: doc.team_name,
-          updated_at: doc.updated_at,
-          overview: doc.data
-        }
+        data: { year, month, summary, streams }
       })
     }
   } catch (err) {

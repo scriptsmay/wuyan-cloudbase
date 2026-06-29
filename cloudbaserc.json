@@ -16,14 +16,28 @@
       "runtime": "Nodejs18.15",
       "timeout": 10,
       "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
+    },
+    {
+      "name": "get-live",
+      "runtime": "Nodejs18.15",
+      "timeout": 10,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
+    },
+    {
+      "name": "sync-live",
+      "runtime": "Nodejs18.15",
+      "timeout": 30,
+      "handler": "index.main",
       "envVariables": {},
-      "triggers": [
-        {
-          "name": "http",
-          "type": "timer",
-          "config": "0 0 2 * * * *"
-        }
-      ]
+      "triggers": []
     }
   ]
 }
