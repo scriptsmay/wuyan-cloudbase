@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>无言数据</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+    }
+    .container { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+    .header { text-align: center; padding: 32px 0 24px; }
+    .header h1 { font-size: 24px; color: #1a1a1a; }
+    .header p { font-size: 14px; color: #999; margin-top: 4px; }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .card.loading { opacity: 0.5; }
+    .card-title { font-size: 13px; color: #999; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-value { font-size: 20px; font-weight: 600; color: #1a1a1a; }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .stat-label { font-size: 12px; color: #999; }
+    .stat-value { font-size: 16px; font-weight: 600; color: #1a1a1a; }
+
+    .sync-status {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #999; padding: 8px 0;
+    }
+    .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+    .sync-dot.ok { background: #52c41a; }
+    .sync-dot.err { background: #ff4d4f; }
+
+    .error-card { background: #fff2f0; border: 1px solid #ffccc7; }
+    .error-card .card-value { color: #ff4d4f; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🙌 无言数据</h1>
+      <p id="season-title">加载中...</p>
+    </div>
+
+    <div class="card loading" id="overview-card">
+      <div class="card-title">当前赛季</div>
+      <div class="card-grid">
+        <div>
+          <div class="stat-label">选手</div>
+          <div class="stat-value" id="player-name">--</div>
+        </div>
+        <div>
+          <div class="stat-label">战队</div>
+          <div class="stat-value" id="team-name">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sync-status">
+      <span class="sync-dot" id="sync-dot"></span>
+      <span id="sync-text">等待数据同步...</span>
+    </div>
+  </div>
+
+  <script>
+    const CLOUD_FUNCTION_URL = 'https://trial-sh-d1gqznm4577d6a062.service.tcloudbase.com/get-overview'
+
+    async function loadData() {
+      const card = document.getElementById('overview-card')
+      try {
+        const res = await fetch(CLOUD_FUNCTION_URL, { method: 'POST' })
+        const json = await res.json()
+
+        if (json.code === 200 && json.data) {
+          card.classList.remove('loading')
+          document.getElementById('season-title').textContent = json.data.season_name || '--'
+          document.getElementById('player-name').textContent = json.data.player_name || '--'
+          document.getElementById('team-name').textContent = json.data.team_name || '--'
+
+          const dot = document.getElementById('sync-dot')
+          dot.classList.add('ok')
+          document.getElementById('sync-text').textContent =
+            `数据更新于 ${new Date(json.data.updated_at).toLocaleString('zh-CN')}`
+        } else {
+          showError(json.message || '暂无数据')
+        }
+      } catch (err) {
+        showError('无法连接云函数: ' + err.message)
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('overview-card').classList.add('error-card')
+      document.querySelector('#overview-card .card-value') ||
+        (document.querySelector('#overview-card .card-grid').innerHTML =
+          `<div class="card-value">${msg}</div>`)
+      document.getElementById('sync-dot').classList.add('err')
+      document.getElementById('sync-text').textContent = msg
+    }
+
+    loadData()
+  </script>
+</body>
+</html>

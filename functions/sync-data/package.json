@@ -1,0 +1,9 @@
+{
+  "name": "sync-data",
+  "version": "1.0.0",
+  "description": "Sync KPL data from CloudBase cloud storage to cloud database",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.5.0"
+  }
+}

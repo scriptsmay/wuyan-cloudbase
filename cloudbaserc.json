@@ -1,0 +1,29 @@
+{
+  "envId": "trial-sh-d1gqznm4577d6a062",
+  "version": "2.0",
+  "functionRoot": "functions",
+  "functions": [
+    {
+      "name": "sync-data",
+      "runtime": "Nodejs18.15",
+      "timeout": 60,
+      "handler": "index.main",
+      "envVariables": {},
+      "triggers": []
+    },
+    {
+      "name": "get-overview",
+      "runtime": "Nodejs18.15",
+      "timeout": 10,
+      "handler": "index.main",
+      "envVariables": {},
+      "triggers": [
+        {
+          "name": "http",
+          "type": "timer",
+          "config": "0 0 2 * * * *"
+        }
+      ]
+    }
+  ]
+}
