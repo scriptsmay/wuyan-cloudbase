@@ -9,7 +9,9 @@
       "timeout": 60,
       "handler": "index.main",
       "envVariables": {},
-      "triggers": []
+      "triggers": [
+        { "name": "daily-sync", "type": "timer", "config": "0 0 4 * * * *" }
+      ]
     },
     {
       "name": "get-overview",
@@ -37,7 +39,9 @@
       "timeout": 30,
       "handler": "index.main",
       "envVariables": {},
-      "triggers": []
+      "triggers": [
+        { "name": "daily-sync-live", "type": "timer", "config": "0 0 5 * * * *" }
+      ]
     }
   ]
 }
