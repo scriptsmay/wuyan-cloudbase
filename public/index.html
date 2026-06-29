@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>无言数据</title>
+  <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -29,8 +30,15 @@
     .card-value { font-size: 20px; font-weight: 600; color: #1a1a1a; }
     .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-    .stat-label { font-size: 12px; color: #999; }
-    .stat-value { font-size: 16px; font-weight: 600; color: #1a1a1a; }
+    .stat-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .stat-table td { padding: 6px 0; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+    .stat-table td:last-child { text-align: right; font-weight: 600; }
+
+    .hero-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .hero-tag {
+      background: #f0f5ff; color: #1d4ed8; padding: 4px 10px;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+    }
 
     .sync-status {
       display: flex; align-items: center; gap: 8px;
@@ -52,57 +60,86 @@
     </div>
 
     <div class="card loading" id="overview-card">
-      <div class="card-title">当前赛季</div>
-      <div class="card-grid">
-        <div>
-          <div class="stat-label">选手</div>
-          <div class="stat-value" id="player-name">--</div>
-        </div>
-        <div>
-          <div class="stat-label">战队</div>
-          <div class="stat-value" id="team-name">--</div>
-        </div>
+      <div class="card-title">本赛季数据</div>
+      <div id="overview-content">
+        <table class="stat-table">
+          <tr><td>选手</td><td id="player-name">--</td></tr>
+          <tr><td>战队</td><td id="team-name">--</td></tr>
+          <tr><td>场次</td><td id="stat-battles">--</td></tr>
+          <tr><td>胜率</td><td id="stat-winrate">--</td></tr>
+          <tr><td>KDA</td><td id="stat-kda">--</td></tr>
+          <tr><td>MVP</td><td id="stat-mvp">--</td></tr>
+        </table>
       </div>
+    </div>
+
+    <div class="card" id="hero-card">
+      <div class="card-title">英雄池 TOP</div>
+      <div class="hero-list" id="hero-list">--</div>
     </div>
 
     <div class="sync-status">
       <span class="sync-dot" id="sync-dot"></span>
-      <span id="sync-text">等待数据同步...</span>
+      <span id="sync-text">正在连接...</span>
     </div>
   </div>
 
   <script>
-    const CLOUD_FUNCTION_URL = 'https://trial-sh-d1gqznm4577d6a062.service.tcloudbase.com/api/overview'
+    const ENV_ID = 'trial-sh-d1gqznm4577d6a062'
 
     async function loadData() {
-      const card = document.getElementById('overview-card')
       try {
-        const res = await fetch(CLOUD_FUNCTION_URL, { method: 'POST' })
-        const json = await res.json()
+        // 匿名登录 CloudBase
+        const app = cloudbase.init({ env: ENV_ID })
+        const auth = app.auth({ persistence: 'local' })
+        await auth.anonymousAuthProvider().signIn()
 
-        if (json.code === 200 && json.data) {
-          card.classList.remove('loading')
-          document.getElementById('season-title').textContent = json.data.season_name || '--'
-          document.getElementById('player-name').textContent = json.data.player_name || '--'
-          document.getElementById('team-name').textContent = json.data.team_name || '--'
+        const db = app.database()
+        const result = await db.collection('season_summaries')
+          .orderBy('updated_at', 'desc')
+          .limit(1)
+          .get()
 
-          const dot = document.getElementById('sync-dot')
-          dot.classList.add('ok')
-          document.getElementById('sync-text').textContent =
-            `数据更新于 ${new Date(json.data.updated_at).toLocaleString('zh-CN')}`
-        } else {
-          showError(json.message || '暂无数据')
+        if (result.data.length === 0) {
+          showError('暂无数据')
+          return
         }
+
+        const doc = result.data[0]
+        document.getElementById('overview-card').classList.remove('loading')
+        document.getElementById('season-title').textContent = doc.season_name || '--'
+        document.getElementById('player-name').textContent = doc.player_name || '--'
+        document.getElementById('team-name').textContent = doc.team_name || '--'
+
+        const cs = doc.data && doc.data.current_season
+        if (cs) {
+          document.getElementById('stat-battles').textContent = cs.battles + '场'
+          document.getElementById('stat-winrate').textContent = (cs.win_rate || '--')
+          document.getElementById('stat-kda').textContent = (cs.kda_ratio || '--')
+          document.getElementById('stat-mvp').textContent = (cs.mvp || '--')
+        }
+
+        const heroes = doc.data && doc.data.hero_top
+        if (heroes && heroes.length) {
+          document.getElementById('hero-list').innerHTML = heroes
+            .map(h => `<span class="hero-tag">${h.hero_name} ${h.win_rate}</span>`)
+            .join('')
+        }
+
+        const dot = document.getElementById('sync-dot')
+        dot.classList.add('ok')
+        document.getElementById('sync-text').textContent =
+          `数据更新于 ${new Date(doc.updated_at).toLocaleString('zh-CN')}`
+
       } catch (err) {
-        showError('无法连接云函数: ' + err.message)
+        showError('连接失败: ' + err.message)
       }
     }
 
     function showError(msg) {
+      document.getElementById('overview-content').innerHTML =
+        `<div class="card-value">${msg}</div>`
       document.getElementById('overview-card').classList.add('error-card')
-      document.querySelector('#overview-card .card-value') ||
-        (document.querySelector('#overview-card .card-grid').innerHTML =
-          `<div class="card-value">${msg}</div>`)
       document.getElementById('sync-dot').classList.add('err')
       document.getElementById('sync-text').textContent = msg
     }
