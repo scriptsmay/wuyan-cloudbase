@@ -1,0 +1,8 @@
+{
+  "name": "sync-live",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.10.0"
+  }
+}

@@ -4,14 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>无言数据</title>
-  <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
+  <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
-      background: #f5f5f5;
-      color: #333;
-      min-height: 100vh;
+      background: #f5f5f5; color: #333; min-height: 100vh;
     }
     .container { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
     .header { text-align: center; padding: 32px 0 24px; }
@@ -19,46 +17,45 @@
     .header p { font-size: 14px; color: #999; margin-top: 4px; }
 
     .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      background: #fff; border-radius: 12px; padding: 20px;
+      margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .card.loading { opacity: 0.5; }
-    .card-title { font-size: 13px; color: #999; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .card-value { font-size: 20px; font-weight: 600; color: #1a1a1a; }
-    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card-title { font-size: 13px; color: #999; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-    .stat-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .stat-table { width: 100%; border-collapse: collapse; }
     .stat-table td { padding: 6px 0; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
     .stat-table td:last-child { text-align: right; font-weight: 600; }
 
-    .hero-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-    .hero-tag {
-      background: #f0f5ff; color: #1d4ed8; padding: 4px 10px;
-      border-radius: 6px; font-size: 13px; font-weight: 500;
-    }
+    .hero-list { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hero-tag { background: #f0f5ff; color: #1d4ed8; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 500; }
 
-    .sync-status {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #999; padding: 8px 0;
-    }
+    .live-summary { display: flex; justify-content: space-around; margin-bottom: 12px; }
+    .live-stat { text-align: center; }
+    .live-stat-val { font-size: 24px; font-weight: 700; color: #f39c12; }
+    .live-stat-label { font-size: 12px; color: #999; }
+    .live-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .live-row:last-child { border-bottom: none; }
+    .live-date { font-size: 14px; }
+    .live-time { font-size: 12px; color: #999; margin-left: 8px; }
+    .live-dur { font-size: 14px; color: #f39c12; font-weight: 600; }
+    .live-link { text-align: center; margin-top: 12px; }
+    .live-link a { color: #3498db; font-size: 13px; text-decoration: none; }
+
+    .sync-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #999; padding: 8px 0; }
     .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
     .sync-dot.ok { background: #52c41a; }
     .sync-dot.err { background: #ff4d4f; }
-
-    .error-card { background: #fff2f0; border: 1px solid #ffccc7; }
-    .error-card .card-value { color: #ff4d4f; font-size: 14px; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🙌 无言数据</h1>
+      <h1>无言数据</h1>
       <p id="season-title">加载中...</p>
     </div>
 
+    <!-- 赛季数据 -->
     <div class="card loading" id="overview-card">
       <div class="card-title">本赛季数据</div>
       <div id="overview-content">
@@ -73,9 +70,16 @@
       </div>
     </div>
 
+    <!-- 英雄池 -->
     <div class="card" id="hero-card">
       <div class="card-title">英雄池 TOP</div>
       <div class="hero-list" id="hero-list">--</div>
+    </div>
+
+    <!-- 直播日历 -->
+    <div class="card" id="live-card">
+      <div class="card-title">直播日历</div>
+      <div id="live-content">加载中...</div>
     </div>
 
     <div class="sync-status">
@@ -86,62 +90,78 @@
 
   <script>
     const ENV_ID = 'trial-sh-d1gqznm4577d6a062'
+    const PUBLISHABLE_KEY = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjlkMWRjMzFlLWI0ZDAtNDQ4Yi1hNzZmLWIwY2M2M2Q4MTQ5OCJ9.eyJpc3MiOiJodHRwczovL3RyaWFsLXNoLWQxZ3F6bm00NTc3ZDZhMDYyLmFwLXNoYW5naGFpLnRjYi1hcGkudGVuY2VudGNsb3VkYXBpLmNvbSIsInN1YiI6ImFub24iLCJhdWQiOiJ0cmlhbC1zaC1kMWdxem5tNDU3N2Q2YTA2MiIsImV4cCI6NDA4NjM4NjM1MSwiaWF0IjoxNzgyNzAzMTUxLCJub25jZSI6InQ2akZfUXZLU1JxaTF6LTUwS2ZqUUEiLCJhdF9oYXNoIjoidDZqRl9RdktTUnFpMXotNTBLZmpRQSIsIm5hbWUiOiJBbm9ueW1vdXMiLCJzY29wZSI6ImFub255bW91cyIsInByb2plY3RfaWQiOiJ0cmlhbC1zaC1kMWdxem5tNDU3N2Q2YTA2MiIsIm1ldGEiOnsicGxhdGZvcm0iOiJQdWJsaXNoYWJsZUtleSJ9LCJ1c2VyX3R5cGUiOiIiLCJjbGllbnRfdHlwZSI6ImNsaWVudF91c2VyIiwiaXNfc3lzdGVtX2FkbWluIjpmYWxzZX0.H8qAlTZ6OLdmjzpUfmXwRGmRzfXcrVd9pwBfNjvW2gxj9AFj8h79Ct8JifnzUsCFuwLwlCl5xK6AqBEMFC4biVgbqMyKm330pQe6m8aY5xWsHTXLVCaMjPNScbllrr6ZV73FMZov1Ra-c2vUtYxaRF4ucMWkm7Qt1O934KPKwmJJbdeYhqZyloMH26As3iy6mg3ddMR6Ntu4PUCjwy_rTEdXBJj25jCnuQL66oheO6zXsAcSOXXCvqmlZSPE_Rzv2kc9CfBPog9wvXFw0eVBEaWq-TG1-AYcRALMw24pvZ_-GpFe4zv7pMoaI2uKSzQBx98sWfbrVP4NKmquL-LdsA'
+
+    function fmtDuration(s) {
+      var h = Math.floor(s / 3600)
+      var m = Math.floor((s % 3600) / 60)
+      return h > 0 ? h + '时' + m + '分' : m + '分钟'
+    }
 
     async function loadData() {
       try {
-        // 匿名登录 CloudBase
-        const app = cloudbase.init({ env: ENV_ID })
-        const auth = app.auth({ persistence: 'local' })
-        await auth.anonymousAuthProvider().signIn()
+        var app = cloudbase.init({
+          env: ENV_ID, region: 'ap-shanghai',
+          accessKey: PUBLISHABLE_KEY,
+          auth: { detectSessionInUrl: true }
+        })
+        var auth = app.auth
+        var loginRes = await auth.signInWithPassword({ username: 'viewer', password: 'WuyanViewer@2026' })
+        if (loginRes.error) throw new Error('登录失败: ' + loginRes.error.message)
 
-        const db = app.database()
-        const result = await db.collection('season_summaries')
-          .orderBy('updated_at', 'desc')
-          .limit(1)
-          .get()
+        var db = app.database()
+        var now = new Date()
+        var monthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
 
-        if (result.data.length === 0) {
-          showError('暂无数据')
-          return
+        var [seasonRes, liveAll] = await Promise.all([
+          db.collection('season_summaries').orderBy('updated_at', 'desc').limit(1).get(),
+          db.collection('live_streams').where({ month_key: monthKey, type: 'monthly_summary' }).get(),
+        ])
+
+        // --- Season Data ---
+        if (seasonRes.data.length > 0) {
+          var doc = seasonRes.data[0]
+          document.getElementById('overview-card').classList.remove('loading')
+          document.getElementById('season-title').textContent = doc.season_name || '--'
+          document.getElementById('player-name').textContent = doc.player_name || '--'
+          document.getElementById('team-name').textContent = doc.team_name || '--'
+          var cs = doc.data && doc.data.current_season
+          if (cs) {
+            document.getElementById('stat-battles').textContent = cs.battles + '场'
+            document.getElementById('stat-winrate').textContent = cs.win_rate || '--'
+            document.getElementById('stat-kda').textContent = cs.kda_ratio || '--'
+            document.getElementById('stat-mvp').textContent = cs.mvp || '--'
+          }
+          var heroes = doc.data && doc.data.hero_top
+          if (heroes && heroes.length) {
+            document.getElementById('hero-list').innerHTML = heroes
+              .map(function(h) { return '<span class="hero-tag">' + h.hero_name + ' ' + h.win_rate + '</span>' })
+              .join('')
+          }
+          var dot = document.getElementById('sync-dot')
+          dot.classList.add('ok')
+          document.getElementById('sync-text').textContent = '数据更新于 ' + new Date(doc.updated_at).toLocaleString('zh-CN')
         }
 
-        const doc = result.data[0]
-        document.getElementById('overview-card').classList.remove('loading')
-        document.getElementById('season-title').textContent = doc.season_name || '--'
-        document.getElementById('player-name').textContent = doc.player_name || '--'
-        document.getElementById('team-name').textContent = doc.team_name || '--'
-
-        const cs = doc.data && doc.data.current_season
-        if (cs) {
-          document.getElementById('stat-battles').textContent = cs.battles + '场'
-          document.getElementById('stat-winrate').textContent = (cs.win_rate || '--')
-          document.getElementById('stat-kda').textContent = (cs.kda_ratio || '--')
-          document.getElementById('stat-mvp').textContent = (cs.mvp || '--')
+        // --- Live Calendar ---
+        if (liveAll.data && liveAll.data.length > 0) {
+          var s = liveAll.data[0]
+          document.getElementById('live-content').innerHTML =
+            '<div class="live-summary">' +
+              '<div class="live-stat"><div class="live-stat-val">' + s.total_days + '</div><div class="live-stat-label">天</div></div>' +
+              '<div class="live-stat"><div class="live-stat-val">' + s.total_sessions + '</div><div class="live-stat-label">场</div></div>' +
+              '<div class="live-stat"><div class="live-stat-val">' + s.total_hours + 'h</div><div class="live-stat-label">总时长</div></div>' +
+              '<div class="live-stat"><div class="live-stat-val">' + s.avg_hours_per_session + 'h</div><div class="live-stat-label">场均</div></div>' +
+            '</div>' +
+            '<div class="live-link"><a href="https://cal.kplwuyan.site/?year=' + s.year + '&month=' + s.month + '" target="_blank">查看完整日历 →</a></div>'
+        } else {
+          document.getElementById('live-content').textContent = '本月暂无直播数据'
         }
-
-        const heroes = doc.data && doc.data.hero_top
-        if (heroes && heroes.length) {
-          document.getElementById('hero-list').innerHTML = heroes
-            .map(h => `<span class="hero-tag">${h.hero_name} ${h.win_rate}</span>`)
-            .join('')
-        }
-
-        const dot = document.getElementById('sync-dot')
-        dot.classList.add('ok')
-        document.getElementById('sync-text').textContent =
-          `数据更新于 ${new Date(doc.updated_at).toLocaleString('zh-CN')}`
-
       } catch (err) {
-        showError('连接失败: ' + err.message)
+        var dot = document.getElementById('sync-dot')
+        dot.classList.add('err')
+        document.getElementById('sync-text').textContent = '连接失败: ' + err.message
       }
-    }
-
-    function showError(msg) {
-      document.getElementById('overview-content').innerHTML =
-        `<div class="card-value">${msg}</div>`
-      document.getElementById('overview-card').classList.add('error-card')
-      document.getElementById('sync-dot').classList.add('err')
-      document.getElementById('sync-text').textContent = msg
     }
 
     loadData()
