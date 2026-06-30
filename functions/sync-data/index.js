@@ -35,7 +35,18 @@ exports.main = async (event, context) => {
     const playerInfo = overview.data && overview.data.player_info ? overview.data.player_info : overview
     console.log(`[sync] Overview loaded: ${playerInfo.latest_nickname} - ${season}`)
 
-    // 3. Upsert season_summaries
+    // 3. 防御：从 hero_stats 重新计算 hero_top，防止上游截断
+    if (overview.data && overview.data.hero_stats) {
+      const heroTop = overview.data.hero_stats.map(h => ({
+        hero_name: h.hero_name,
+        battles: h.battles,
+        win_rate: h.win_rate
+      }))
+      console.log(`[sync] hero_top computed from hero_stats: ${heroTop.length} heroes (was ${(overview.hero_top || []).length})`)
+      overview.hero_top = heroTop
+    }
+
+    // 4. Upsert season_summaries
     const summaryDoc = {
       season,
       season_name: overview.data && overview.data.career_summary
@@ -55,7 +66,7 @@ exports.main = async (event, context) => {
     }
     results.synced.push('season_summaries')
 
-    // 4. 记录同步快照
+    // 5. 记录同步快照
     await db.collection('sync_snapshots').add({
       season, type: 'daily', status: 'success',
       source: `cloud-storage:data/derived/${season}/overview.json`,
