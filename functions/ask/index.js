@@ -29,7 +29,7 @@ exports.main = async (event, context) => {
     return jsonResp(401, { code: 401, message: 'Unauthorized', data: null })
   }
 
-  const openid = event.openid || event.wxOpenid || ''
+  const openid = event.openid || event.wxOpenid || body._cid || query._cid || event._cid || ''
   const q = (body.q || query.q || event.q || '').trim()
   if (!q) {
     return jsonResp(400, { code: 400, message: '问题不能为空', data: null })

@@ -36,7 +36,7 @@ exports.main = async (event, context) => {
 
   const mood = (body.mood || 'daily').toLowerCase()
   const customText = body.text || ''
-  const openid = event.openid || event.wxOpenid || ''
+  const openid = event.openid || event.wxOpenid || body._cid || query._cid || event._cid || ''
 
   if (!MOOD_PROMPTS[mood]) {
     return jsonResp(400, { code: 400, message: '心情参数不支持', data: null })

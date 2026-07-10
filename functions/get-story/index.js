@@ -109,7 +109,7 @@ function normalizeStats(stats) {
         : (stats.winRateDiff != null
             ? stats.winRateDiff
             : (stats.win_rate && stats.win_rate.diff != null ? Math.round(stats.win_rate.diff * 1000) / 10 : 0))
-    if (winRateDiff > 0 && winRateDiff < 1) winRateDiff = Math.round(winRateDiff * 1000) / 10
+    if (winRateDiff > -1 && winRateDiff < 1) winRateDiff = Math.round(winRateDiff * 1000) / 10
     const kdaDiff = stats.kda_diff != null
         ? stats.kda_diff
         : (stats.kdaDiff != null
