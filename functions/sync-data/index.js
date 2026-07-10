@@ -68,7 +68,7 @@ exports.main = async (event, context) => {
 
     // 5. 写入每日赛季快照（供故事卡周环比计算）
     const today = new Date().toISOString().split('T')[0]
-    const metrics = extractMetrics(overview)
+    const metrics = extractMetrics(overview, season)
     const overviewHash = md5(JSON.stringify(metrics))
     const snapshotDoc = {
       date: today,
@@ -142,10 +142,11 @@ async function download(app, envId, bucket, cloudPath) {
   return null
 }
 
-function extractMetrics(overview) {
+function extractMetrics(overview, seasonId) {
   const data = overview.data || overview
   const summary = data.career_summary || {}
-  const season = data.season_stats || data
+  const seasonStats = Array.isArray(data.season_stats) ? data.season_stats : []
+  const season = seasonStats.find(s => s.season_id === seasonId) || data.current_season || {}
   return {
     win_rate: season.win_rate != null ? season.win_rate : (summary.win_rate || 0),
     kda_ratio: season.kda_ratio != null ? season.kda_ratio : (summary.kda_ratio || 0),

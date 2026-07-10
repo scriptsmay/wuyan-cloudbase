@@ -22,12 +22,6 @@ exports.main = async (event, context) => {
   }
 
   try {
-    const dailyLimit = await getDailyLimit(db, 'ask')
-    const limitOk = await checkUsageLimit(db, 'ask', dailyLimit, openid)
-    if (!limitOk) {
-      return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
-    }
-
     const cacheKey = md5(normalize(q))
     const cached = await getCache(db, cacheKey)
     if (cached) {
@@ -38,6 +32,12 @@ exports.main = async (event, context) => {
     const { overviewData, liveData, scheduleData, refs } = await fetchContextData(db)
     if (!overviewData) {
       return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
+    }
+
+    const dailyLimit = await getDailyLimit(db, 'ask')
+    const limitOk = await checkUsageLimit(db, 'ask', dailyLimit, openid)
+    if (!limitOk) {
+      return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
     }
 
     const systemPrompt = buildSystemPrompt(overviewData, liveData)
@@ -80,7 +80,7 @@ function parseBody(event) {
         const obj = {}
         for (const [k, v] of params) obj[k] = v
         return obj
-      } catch (_) {}
+      } catch (_) { }
       return {}
     }
   }
@@ -117,7 +117,7 @@ async function getCache(db, cacheKey) {
       }
       await db.collection('ask_cache').doc(cacheKey).remove()
     }
-  } catch (_) {}
+  } catch (_) { }
   return null
 }
 

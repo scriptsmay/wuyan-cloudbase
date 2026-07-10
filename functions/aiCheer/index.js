@@ -35,15 +35,15 @@ exports.main = async (event, context) => {
   }
 
   try {
+    const overview = await getLatestOverview(db)
+    if (!overview) {
+      return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
+    }
+
     const dailyLimit = await getDailyLimit(db, 'aiCheer')
     const limitOk = await checkUsageLimit(db, 'aiCheer', dailyLimit, openid)
     if (!limitOk) {
       return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
-    }
-
-    const overview = await getLatestOverview(db)
-    if (!overview) {
-      return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
     }
 
     const systemPrompt = `你是一位KPL（王者荣耀职业联赛）选手无言的超级粉丝，擅长写应援文案。
@@ -155,7 +155,7 @@ function parseAIResult(text) {
     if (lines.length > 0) {
       return { lines: lines.slice(0, 3), emoji_caption: emoji || '🎉💪🔥' }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   // 尝试正则提取 JSON
   try {
@@ -168,7 +168,7 @@ function parseAIResult(text) {
         return { lines: lines2.slice(0, 3), emoji_caption: emoji2 || '🎉💪🔥' }
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   // fallback: 逐行提取纯文案，排除 JSON 结构行
   var rawLines = cleaned.split(/\n+/)
