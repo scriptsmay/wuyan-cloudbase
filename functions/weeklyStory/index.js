@@ -43,9 +43,15 @@ exports.main = async (event, context) => {
 
     let heroTopName = ''
     let heroTopWinRate = ''
-    if (latestOverview && latestOverview.data && latestOverview.data.hero_top && latestOverview.data.hero_top.length > 0) {
-      heroTopName = latestOverview.data.hero_top[0].hero_name
-      heroTopWinRate = latestOverview.data.hero_top[0].win_rate
+    if (latestOverview) {
+      const rawData = latestOverview.data || {}
+      const innerData = rawData.data || rawData
+      const heroStats = innerData.hero_stats || []
+      const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
+      if (heroTop.length > 0) {
+        heroTopName = heroTop[0].hero_name
+        heroTopWinRate = heroTop[0].win_rate
+      }
     }
 
     const systemPrompt = `你是一位专业的电竞数据分析师，同时也是KPL选手无言的粉丝。

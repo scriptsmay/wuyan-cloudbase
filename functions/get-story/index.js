@@ -35,6 +35,44 @@ exports.main = async (event, context) => {
     }
 
     const doc = res.data[0]
+
+    // 补充前端期望的字段（season_name, hero, live_hours）
+    let seasonName = 'KPL2026夏季赛'
+    let heroName = ''
+    let heroWinRate = 0
+    let liveHours = 0
+
+    try {
+      const overviewRes = await db.collection('season_summaries')
+        .orderBy('updated_at', 'desc')
+        .limit(1)
+        .get()
+      if (overviewRes.data.length > 0) {
+        const o = overviewRes.data[0]
+        seasonName = o.season_name || seasonName
+        const rawData = o.data || {}
+        const innerData = rawData.data || rawData
+        const heroStats = innerData.hero_stats || []
+        const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
+        if (heroTop.length > 0) {
+          heroName = heroTop[0].hero_name || ''
+          heroWinRate = parseFloat(heroTop[0].win_rate || '0')
+        }
+      }
+    } catch (_) {}
+
+    try {
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = now.getMonth() + 1
+      const liveRes = await db.collection('live_streams')
+        .where({ year, month })
+        .get()
+      const streams = (liveRes.data || []).filter(s => s.type !== 'monthly_summary')
+      const totalSeconds = streams.reduce((sum, s) => sum + (s.duration || 0), 0)
+      liveHours = Math.round(totalSeconds / 360) / 10
+    } catch (_) {}
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -43,10 +81,13 @@ exports.main = async (event, context) => {
         message: 'ok',
         data: {
           week: doc.week,
+          season_name: seasonName,
           text: doc.text,
           stats: doc.stats,
           cover_color: doc.cover_color,
-          created_at: doc.created_at
+          created_at: doc.created_at,
+          hero: { name: heroName, win_rate: heroWinRate },
+          live_hours: liveHours
         }
       })
     }
