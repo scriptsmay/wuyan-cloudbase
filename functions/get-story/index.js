@@ -73,6 +73,8 @@ exports.main = async (event, context) => {
       liveHours = Math.round(totalSeconds / 360) / 10
     } catch (_) {}
 
+    const statsPayload = normalizeStats(doc.stats || {})
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -83,7 +85,7 @@ exports.main = async (event, context) => {
           week: doc.week,
           season_name: seasonName,
           text: doc.text,
-          stats: doc.stats,
+          stats: statsPayload,
           cover_color: doc.cover_color,
           created_at: doc.created_at,
           hero: { name: heroName, win_rate: heroWinRate },
@@ -98,4 +100,22 @@ exports.main = async (event, context) => {
       body: JSON.stringify({ code: 500, message: err.message, data: null })
     }
   }
+}
+
+function normalizeStats(stats) {
+  const winRateDiff = stats.win_rate_diff != null
+    ? stats.win_rate_diff
+    : (stats.win_rate && stats.win_rate.diff != null ? Math.round(stats.win_rate.diff * 1000) / 10 : 0)
+  const kdaDiff = stats.kda_diff != null
+    ? stats.kda_diff
+    : (stats.kda_ratio && stats.kda_ratio.diff != null ? stats.kda_ratio.diff : 0)
+  const battlesDiff = stats.battles_diff != null
+    ? stats.battles_diff
+    : (stats.battles && stats.battles.diff != null ? stats.battles.diff : 0)
+
+  return Object.assign({}, stats, {
+    win_rate_diff: winRateDiff,
+    kda_diff: kdaDiff,
+    battles_diff: battlesDiff
+  })
 }

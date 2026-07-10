@@ -81,28 +81,32 @@
       "runtime": "Nodejs18.15",
       "timeout": 60,
       "handler": "index.main",
-      "envVariables": {},
+      "envVariables": {
+        "AI_MODEL": "hy3"
+      },
       "triggers": [
-        { "name": "weekly-story-gen", "type": "timer", "config": "0 0 1 * * 1 *" }
+        { "name": "weekly-story-gen", "type": "timer", "config": "0 0 5 * * 1 *" }
       ]
     },
     {
       "name": "ask",
       "runtime": "Nodejs18.15",
-      "timeout": 30,
+      "timeout": 60,
       "handler": "index.main",
       "envVariables": {
-        "AUTH_TOKEN": "wuyan_mini_20260710"
+        "AUTH_TOKEN": "wuyan_mini_20260710",
+        "AI_MODEL": "hy3"
       },
       "triggers": []
     },
     {
       "name": "aiCheer",
       "runtime": "Nodejs18.15",
-      "timeout": 30,
+      "timeout": 60,
       "handler": "index.main",
       "envVariables": {
-        "AUTH_TOKEN": "wuyan_mini_20260710"
+        "AUTH_TOKEN": "wuyan_mini_20260710",
+        "AI_MODEL": "hy3"
       },
       "triggers": []
     }
