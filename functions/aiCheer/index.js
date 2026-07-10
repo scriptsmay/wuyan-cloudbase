@@ -1,7 +1,5 @@
 const cloudbase = require('@cloudbase/node-sdk')
 
-const DAILY_LIMIT = 50
-
 const MOOD_PROMPTS = {
   victory: '胜利时刻，欢呼雀跃，激情澎湃，用最燃的语气庆祝胜利',
   low: '低谷时期，温暖治愈，鼓励打气，相信选手一定能触底反弹',
@@ -30,13 +28,15 @@ exports.main = async (event, context) => {
 
   const mood = (body.mood || 'daily').toLowerCase()
   const customText = body.text || ''
+  const openid = event.openid || event.wxOpenid || ''
 
   if (!MOOD_PROMPTS[mood]) {
     return jsonResp(400, { code: 400, message: '心情参数不支持', data: null })
   }
 
   try {
-    const limitOk = await checkUsageLimit(db, 'aiCheer', DAILY_LIMIT)
+    const dailyLimit = await getDailyLimit(db, 'aiCheer')
+    const limitOk = await checkUsageLimit(db, 'aiCheer', dailyLimit, openid)
     if (!limitOk) {
       return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
     }
@@ -228,13 +228,33 @@ async function callAI(app, systemPrompt, userPrompt) {
   throw new Error("AI response format unexpected")
 }
 
-async function checkUsageLimit(db, module, dailyLimit) {
+async function getDailyLimit(db, module) {
+  const defaultLimit = 10
+  try {
+    const res = await db.collection('app_config').doc('ai_limits').get()
+    if (res.data && res.data.length > 0) {
+      const doc = res.data[0]
+      if (module === 'ask') return doc.ask_daily_limit || defaultLimit
+      if (module === 'aiCheer') return doc.cheer_daily_limit || defaultLimit
+    }
+  } catch (e) {
+    console.warn('[aiCheer] getDailyLimit failed, using default:', e.message)
+  }
+  return defaultLimit
+}
+
+async function checkUsageLimit(db, module, dailyLimit, openid) {
   const today = new Date().toISOString().split('T')[0]
-  const docId = `${module}_${today}`
+  const docId = openid ? `${module}_${openid}_${today}` : `${module}_${today}`
   try {
     const res = await db.collection('usage_limits').doc(docId).get()
     if (res.data && res.data.length > 0) {
       const doc = res.data[0]
+      // 限额变更时重置计数（如从旧的 500 降为 10）
+      if (doc.limit && doc.limit !== dailyLimit) {
+        await db.collection('usage_limits').doc(docId).update({ count: 1, limit: dailyLimit })
+        return true
+      }
       if (doc.count >= dailyLimit) {
         return false
       }
@@ -243,6 +263,7 @@ async function checkUsageLimit(db, module, dailyLimit) {
       await db.collection('usage_limits').add({
         _id: docId,
         module,
+        openid: openid || '',
         date: today,
         count: 1,
         limit: dailyLimit,

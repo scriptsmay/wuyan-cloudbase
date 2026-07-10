@@ -105,6 +105,16 @@
         "AUTH_TOKEN": "wuyan_mini_20260710"
       },
       "triggers": []
+    },
+    {
+      "name": "get-config",
+      "runtime": "Nodejs18.15",
+      "timeout": 10,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan_mini_20260710"
+      },
+      "triggers": []
     }
   ]
 }

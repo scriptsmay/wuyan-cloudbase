@@ -1,0 +1,9 @@
+{
+  "name": "get-config",
+  "version": "1.0.0",
+  "description": "Get app public config",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}
