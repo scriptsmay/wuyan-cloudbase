@@ -1,6 +1,6 @@
 exports.main = async (event, context) => {
   const cloudbase = require('@cloudbase/node-sdk')
-  const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
+  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
   const db = app.database()
 
   const query = event.queryStringParameters || {}
