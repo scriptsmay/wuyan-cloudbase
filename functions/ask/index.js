@@ -9,13 +9,14 @@ exports.main = async (event, context) => {
   const db = app.database()
 
   const body = parseBody(event)
-  const token = (event.queryStringParameters && event.queryStringParameters.token) || body.token || ''
+  const query = event.queryStringParameters || {}
+  const token = query.token || body.token || event.token || ''
   const AUTH_TOKEN = process.env.AUTH_TOKEN
   if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
     return jsonResp(401, { code: 401, message: 'Unauthorized', data: null })
   }
 
-  const q = (body.q || '').trim()
+  const q = (body.q || query.q || event.q || '').trim()
   if (!q) {
     return jsonResp(400, { code: 400, message: '问题不能为空', data: null })
   }
@@ -33,13 +34,13 @@ exports.main = async (event, context) => {
       return jsonResp(200, { code: 200, message: 'ok', data: cached })
     }
 
-    const { overviewData, liveData, refs } = await fetchContextData(db)
+    const { overviewData, liveData, scheduleData, refs } = await fetchContextData(db)
     if (!overviewData) {
       return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
     }
 
     const systemPrompt = buildSystemPrompt(overviewData, liveData)
-    const userPrompt = buildUserPrompt(q, overviewData, liveData)
+    const userPrompt = buildUserPrompt(q, overviewData, liveData, scheduleData)
 
     let answer = ''
     try {
@@ -63,6 +64,7 @@ exports.main = async (event, context) => {
 }
 
 function parseBody(event) {
+  // CloudBase HTTP 函数可能把 body 放在 event.body 或直接展开在 event 上
   if (event.body) {
     try {
       if (event.isBase64Encoded) {
@@ -71,8 +73,19 @@ function parseBody(event) {
       }
       return typeof event.body === 'string' ? JSON.parse(event.body) : event.body
     } catch (_) {
+      // body 不是 JSON，可能是 form-urlencoded
+      try {
+        const params = new URLSearchParams(event.body)
+        const obj = {}
+        for (const [k, v] of params) obj[k] = v
+        return obj
+      } catch (_) {}
       return {}
     }
+  }
+  // 直接从 event 取参数（部分触发器会展开 body）
+  if (event.q || event.mood || event.text) {
+    return { q: event.q, mood: event.mood, text: event.text, token: event.token }
   }
   return {}
 }
@@ -129,6 +142,7 @@ async function fetchContextData(db) {
   const refs = []
   let overviewData = null
   let liveData = null
+  let scheduleData = null
 
   try {
     const ovRes = await db.collection('season_summaries')
@@ -167,7 +181,55 @@ async function fetchContextData(db) {
     console.warn('[ask] fetch live failed:', e.message)
   }
 
-  return { overviewData, liveData, refs }
+  try {
+    const schedRes = await db.collection('match_schedules')
+      .orderBy('updated_at', 'desc')
+      .limit(1)
+      .get()
+    if (schedRes.data.length > 0) {
+      const doc = schedRes.data[0]
+      const matches = doc.matches || []
+      const nowTs = Math.floor(Date.now() / 1000)
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const todayStartTs = Math.floor(todayStart.getTime() / 1000)
+      const todayEndTs = todayStartTs + 86400
+
+      const todayMatches = matches.filter(m => {
+        const ts = m.start_ts || 0
+        return ts >= todayStartTs && ts < todayEndTs
+      })
+      const upcoming = matches.filter(m => {
+        const ts = m.start_ts || 0
+        return ts >= nowTs
+      }).slice(0, 5)
+      const recent = matches.filter(m => {
+        const ts = m.start_ts || 0
+        return ts > 0 && ts < nowTs
+      }).slice(-5).reverse()
+
+      const fmt = (m) => {
+        const d = new Date((m.start_ts || 0) * 1000)
+        const dateStr = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        const score = m.status === 4 ? ` ${m.score_a || 0}:${m.score_b || 0}` : ''
+        return `${dateStr} ${m.team_a || ''} vs ${m.team_b || ''}${score} (${m.stage || m.date || ''})`
+      }
+
+      if (upcoming.length > 0 || recent.length > 0 || todayMatches.length > 0) {
+        scheduleData = {
+          season_name: doc.season_name || '',
+          today: todayMatches.map(fmt),
+          upcoming: upcoming.map(fmt),
+          recent: recent.map(fmt)
+        }
+        refs.push('赛程数据')
+      }
+    }
+  } catch (e) {
+    console.warn('[ask] fetch schedule failed:', e.message)
+  }
+
+  return { overviewData, liveData, scheduleData, refs }
 }
 
 function buildSystemPrompt(overview, live) {
@@ -179,7 +241,7 @@ function buildSystemPrompt(overview, live) {
 当前选手：${player}，所属战队：${team}。`
 }
 
-function buildUserPrompt(q, overview, live) {
+function buildUserPrompt(q, overview, live, schedule) {
   const rawData = overview.data || {}
   // overview.json 结构: { schema_version, season, data: { career_summary, season_stats, hero_stats } }
   const data = rawData.data || rawData
@@ -236,6 +298,31 @@ MVP次数: ${mvp}
 直播天数: ${live.total_sessions}天
 总时长: ${live.total_hours}小时
 最近直播: ${live.latest_date}`
+  }
+
+  if (schedule) {
+    context += `
+
+【赛程数据 - ${schedule.season_name}】`
+    if (schedule.today && schedule.today.length > 0) {
+      context += `
+今日比赛:
+${schedule.today.join('\n')}`
+    }
+    if (schedule.upcoming && schedule.upcoming.length > 0) {
+      context += `
+即将开始的比赛:
+${schedule.upcoming.join('\n')}`
+    }
+    if (schedule.recent && schedule.recent.length > 0) {
+      context += `
+最近已完赛的比赛:
+${schedule.recent.join('\n')}`
+    }
+    if (!schedule.upcoming.length && !schedule.recent.length && !schedule.today.length) {
+      context += `
+暂无赛程信息`
+    }
   }
 
   context += `

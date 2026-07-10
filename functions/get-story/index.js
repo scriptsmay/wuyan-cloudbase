@@ -73,6 +73,14 @@ exports.main = async (event, context) => {
       liveHours = Math.round(totalSeconds / 360) / 10
     } catch (_) {}
 
+    // 转换 stats 结构为前端期望的扁平格式
+    var rawStats = doc.stats || {}
+    var flatStats = {
+      winRateDiff: rawStats.win_rate ? rawStats.win_rate.diff : 0,
+      kdaDiff: rawStats.kda_ratio ? rawStats.kda_ratio.diff : 0,
+      battlesDiff: rawStats.battles ? rawStats.battles.diff : 0
+    }
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -83,7 +91,7 @@ exports.main = async (event, context) => {
           week: doc.week,
           season_name: seasonName,
           text: doc.text,
-          stats: doc.stats,
+          stats: flatStats,
           cover_color: doc.cover_color,
           created_at: doc.created_at,
           hero: { name: heroName, win_rate: heroWinRate },
