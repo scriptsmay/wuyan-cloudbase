@@ -1,8 +1,10 @@
 node_modules/
-.DS_Store
 *.log
+.DS_Store
 .env
 .env.*
 !.env.example
 .trae/
 .cloudbase/
+package-lock.json
+schedule_check.json

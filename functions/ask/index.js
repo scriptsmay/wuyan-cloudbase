@@ -5,7 +5,7 @@ const CACHE_TTL = 5 * 60 * 1000
 const DAILY_LIMIT = 500
 
 exports.main = async (event, context) => {
-  const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
+  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
   const db = app.database()
 
   const body = parseBody(event)
@@ -180,21 +180,53 @@ function buildSystemPrompt(overview, live) {
 }
 
 function buildUserPrompt(q, overview, live) {
-  const data = overview.data || {}
-  const season = overview.season_name || overview.season || ''
-  const summary = data.career_summary || {}
-  const heroTop = data.hero_top || []
-  const heroTopStr = heroTop.slice(0, 5).map(h => `${h.hero_name}(${h.win_rate}胜率, ${h.battles}场)`).join('、')
+  const rawData = overview.data || {}
+  // overview.json 结构: { schema_version, season, data: { career_summary, season_stats, hero_stats } }
+  const data = rawData.data || rawData
+  const seasonId = overview.season || ''
+  const seasonName = overview.season_name || seasonId || ''
+  const career = data.career_summary || {}
+  const seasonStatsArr = data.season_stats || []
+  const seasonStats = seasonStatsArr.find(s => s.season_id === seasonId) || {}
+  const heroStats = data.hero_stats || []
+  console.log('[ask] buildUserPrompt seasonId:', seasonId, 'seasonStats found:', !!seasonStats.season_id, 'heroStats count:', heroStats.length)
 
-  let context = `【赛季概览 - ${season}】
+  // 胜率统一格式化为 xx.x%
+  const fmtRate = (v) => {
+    if (v == null) return '暂无'
+    if (typeof v === 'string') {
+      if (v.includes('%')) return v
+      const n = parseFloat(v)
+      if (!isNaN(n) && n <= 1) return (n * 100).toFixed(1) + '%'
+      return v
+    }
+    if (typeof v === 'number') {
+      if (v <= 1) return (v * 100).toFixed(1) + '%'
+      return v.toFixed(1) + '%'
+    }
+    return String(v)
+  }
+
+  // 优先取当前赛季数据，其次生涯汇总
+  const winRate = seasonStats.win_rate != null ? fmtRate(seasonStats.win_rate) : fmtRate(career.win_rate)
+  const kda = seasonStats.kda_ratio != null ? seasonStats.kda_ratio : '暂无'
+  const totalMatches = seasonStats.battles != null ? seasonStats.battles : (career.total_matches || '暂无')
+  const mvp = seasonStats.mvp != null ? seasonStats.mvp : '暂无'
+  const avgKills = seasonStats.avg_kills != null ? seasonStats.avg_kills : '暂无'
+  const avgDeaths = seasonStats.avg_deaths != null ? seasonStats.avg_deaths : '暂无'
+  const avgAssists = seasonStats.avg_assists != null ? seasonStats.avg_assists : '暂无'
+
+  const heroTopStr = heroStats.slice(0, 5).map(h => `${h.hero_name}(${fmtRate(h.win_rate)}, ${h.battles}场)`).join('、')
+
+  let context = `【赛季概览 - ${seasonName}】
 战队: ${overview.team_name || ''}
-胜率: ${summary.win_rate != null ? summary.win_rate : '暂无'}
-KDA: ${summary.kda_ratio != null ? summary.kda_ratio : '暂无'}
-总场次: ${summary.total_matches != null ? summary.total_matches : '暂无'}
-MVP次数: ${summary.mvp_count != null ? summary.mvp_count : '暂无'}
-场均击杀: ${summary.avg_kills != null ? summary.avg_kills : '暂无'}
-场均死亡: ${summary.avg_deaths != null ? summary.avg_deaths : '暂无'}
-场均助攻: ${summary.avg_assists != null ? summary.avg_assists : '暂无'}
+胜率: ${winRate}
+KDA: ${kda}
+总场次: ${totalMatches}
+MVP次数: ${mvp}
+场均击杀: ${avgKills}
+场均死亡: ${avgDeaths}
+场均助攻: ${avgAssists}
 常用英雄Top5: ${heroTopStr || '暂无'}`
 
   if (live) {
@@ -216,28 +248,25 @@ MVP次数: ${summary.mvp_count != null ? summary.mvp_count : '暂无'}
 
 async function callAI(app, systemPrompt, userPrompt) {
   const ai = app.ai()
-  const res = await ai.run({
+  const model = ai.createModel("cloudbase")
+  const res = await model.generateText({
+    model: process.env.AI_MODEL || "hy3",
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    model: process.env.AI_MODEL || 'default',
-    stream: false
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
   })
 
+  if (res && res.text) {
+    return res.text
+  }
   if (res && res.choices && res.choices.length > 0) {
     const choice = res.choices[0]
     if (choice.message && choice.message.content) {
       return choice.message.content
     }
-    if (choice.text) {
-      return choice.text
-    }
   }
-  if (res && res.content) {
-    return res.content
-  }
-  throw new Error('AI response format unexpected')
+  throw new Error("AI response format unexpected")
 }
 
 async function checkUsageLimit(db, module, dailyLimit) {

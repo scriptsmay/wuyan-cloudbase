@@ -17,7 +17,7 @@ const MOOD_NAMES = {
 }
 
 exports.main = async (event, context) => {
-  const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
+  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
   const db = app.database()
 
   const body = parseBody(event)
@@ -53,18 +53,42 @@ exports.main = async (event, context) => {
 只输出JSON格式：{"lines": ["文案1", "文案2", "文案3"], "emoji_caption": "🎉..." }
 不要输出任何其他文字。`
 
-    const data = overview.data || {}
-    const summary = data.career_summary || {}
-    const heroTop = data.hero_top || []
+    const rawData = overview.data || {}
+    const data = rawData.data || rawData
+    const seasonId = overview.season || ''
+    const seasonStats = (data.season_stats || []).find(s => s.season_id === seasonId) || {}
+    const career = data.career_summary || {}
+    const heroStats = data.hero_stats || []
+    const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
     const heroName = heroTop.length > 0 ? heroTop[0].hero_name : ''
     const heroWinRate = heroTop.length > 0 ? heroTop[0].win_rate : ''
 
+    // 胜率统一格式化
+    const fmtRate = (v) => {
+      if (v == null) return '暂无'
+      if (typeof v === 'string') {
+        if (v.includes('%')) return v
+        const n = parseFloat(v)
+        if (!isNaN(n) && n <= 1) return (n * 100).toFixed(1) + '%'
+        return v
+      }
+      if (typeof v === 'number') {
+        if (v <= 1) return (v * 100).toFixed(1) + '%'
+        return v.toFixed(1) + '%'
+      }
+      return String(v)
+    }
+
+    const kda = seasonStats.kda_ratio != null ? seasonStats.kda_ratio : (career.kda_ratio || '暂无')
+    const winRate = seasonStats.win_rate != null ? fmtRate(seasonStats.win_rate) : fmtRate(career.win_rate)
+    const totalMatches = seasonStats.battles != null ? seasonStats.battles : (career.total_matches || '暂无')
+
     let userPrompt = `选手：无言
 战队：${overview.team_name || ''}
-当前赛季KDA：${summary.kda_ratio != null ? summary.kda_ratio : '暂无'}
-胜率：${summary.win_rate != null ? (summary.win_rate * 100).toFixed(1) + '%' : '暂无'}
-总场次：${summary.total_matches != null ? summary.total_matches : '暂无'}
-常用英雄：${heroName || '暂无'}
+当前赛季KDA：${kda}
+胜率：${winRate}
+总场次：${totalMatches}
+常用英雄：${heroName || '暂无'}(${fmtRate(heroWinRate)})
 心情：${MOOD_NAMES[mood] || mood}`
 
     if (customText) {
@@ -147,28 +171,25 @@ async function getLatestOverview(db) {
 
 async function callAI(app, systemPrompt, userPrompt) {
   const ai = app.ai()
-  const res = await ai.run({
+  const model = ai.createModel("cloudbase")
+  const res = await model.generateText({
+    model: process.env.AI_MODEL || "hy3",
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    model: process.env.AI_MODEL || 'default',
-    stream: false
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
   })
 
+  if (res && res.text) {
+    return res.text
+  }
   if (res && res.choices && res.choices.length > 0) {
     const choice = res.choices[0]
     if (choice.message && choice.message.content) {
       return choice.message.content
     }
-    if (choice.text) {
-      return choice.text
-    }
   }
-  if (res && res.content) {
-    return res.content
-  }
-  throw new Error('AI response format unexpected')
+  throw new Error("AI response format unexpected")
 }
 
 async function checkUsageLimit(db, module, dailyLimit) {

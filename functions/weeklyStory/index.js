@@ -1,7 +1,7 @@
 const cloudbase = require('@cloudbase/node-sdk')
 
 exports.main = async (event, context) => {
-  const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
+  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
   const db = app.database()
 
   const result = { week: null, status: 'pending', error: null }
@@ -158,26 +158,23 @@ async function getLatestOverview(db) {
 
 async function callAI(app, systemPrompt, userPrompt) {
   const ai = app.ai()
-  const res = await ai.run({
+  const model = ai.createModel("cloudbase")
+  const res = await model.generateText({
+    model: process.env.AI_MODEL || "hy3",
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    model: process.env.AI_MODEL || 'default',
-    stream: false
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
   })
 
+  if (res && res.text) {
+    return res.text
+  }
   if (res && res.choices && res.choices.length > 0) {
     const choice = res.choices[0]
     if (choice.message && choice.message.content) {
       return choice.message.content
     }
-    if (choice.text) {
-      return choice.text
-    }
   }
-  if (res && res.content) {
-    return res.content
-  }
-  throw new Error('AI response format unexpected')
+  throw new Error("AI response format unexpected")
 }

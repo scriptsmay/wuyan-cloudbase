@@ -45,8 +45,8 @@
       "timeout": 30,
       "handler": "index.main",
       "envVariables": {
-        "TCB_ENV": "YOUR_ENV_ID",
-        "TCB_BUCKET": "YOUR_BUCKET"
+        "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
+        "TCB_BUCKET": "7472-trial-sh-d1gqznm4577d6a062-1251520283"
       },
       "triggers": [
         { "name": "daily-sync-schedule", "type": "timer", "config": "0 0 6 * * * *" }
@@ -83,7 +83,9 @@
       "runtime": "Nodejs18.15",
       "timeout": 30,
       "handler": "index.main",
-      "envVariables": {},
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-test-2026"
+      },
       "triggers": []
     },
     {
@@ -91,7 +93,9 @@
       "runtime": "Nodejs18.15",
       "timeout": 30,
       "handler": "index.main",
-      "envVariables": {},
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-test-2026"
+      },
       "triggers": []
     }
   ]
