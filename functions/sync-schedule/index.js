@@ -1,8 +1,14 @@
 const cloudbase = require('@cloudbase/node-sdk')
 
 exports.main = async (event, context) => {
-  const envId = process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062'
-  const bucket = '7472-trial-sh-d1gqznm4577d6a062-1251520283'
+  const envId = process.env.TCB_ENV
+  if (!envId) {
+    return { season: null, status: 'error', matches: 0, error: 'TCB_ENV not configured' }
+  }
+  const bucket = process.env.TCB_BUCKET
+  if (!bucket) {
+    return { season: null, status: 'error', matches: 0, error: 'TCB_BUCKET not configured' }
+  }
   const app = cloudbase.init({ env: envId })
   const db = app.database()
 

@@ -5,8 +5,8 @@ exports.main = async (event, context) => {
 
   const query = event.queryStringParameters || {}
   const token = query.token || ''
-  const AUTH_TOKEN = process.env.AUTH_TOKEN || 'wuyan-mini-2026'
-  if (token !== AUTH_TOKEN) {
+  const AUTH_TOKEN = process.env.AUTH_TOKEN
+  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
     return {
       statusCode: 401,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

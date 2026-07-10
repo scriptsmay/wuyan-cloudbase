@@ -23,8 +23,8 @@ exports.main = async (event, context) => {
   const body = parseBody(event)
   const query = event.queryStringParameters || {}
   const token = query.token || body.token || ''
-  const AUTH_TOKEN = process.env.AUTH_TOKEN || 'wuyan-mini-2026'
-  if (token !== AUTH_TOKEN) {
+  const AUTH_TOKEN = process.env.AUTH_TOKEN
+  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
     return jsonResp(401, { code: 401, message: 'Unauthorized', data: null })
   }
 

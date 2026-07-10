@@ -18,9 +18,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 10,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     },
     {
@@ -28,9 +26,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 10,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     },
     {
@@ -48,7 +44,10 @@
       "runtime": "Nodejs18.15",
       "timeout": 30,
       "handler": "index.main",
-      "envVariables": {},
+      "envVariables": {
+        "TCB_ENV": "YOUR_ENV_ID",
+        "TCB_BUCKET": "YOUR_BUCKET"
+      },
       "triggers": [
         { "name": "daily-sync-schedule", "type": "timer", "config": "0 0 6 * * * *" }
       ]
@@ -58,9 +57,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 10,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     },
     {
@@ -68,9 +65,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 10,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     },
     {
@@ -88,9 +83,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 30,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     },
     {
@@ -98,9 +91,7 @@
       "runtime": "Nodejs18.15",
       "timeout": 30,
       "handler": "index.main",
-      "envVariables": {
-        "AUTH_TOKEN": "wuyan-mini-2026"
-      },
+      "envVariables": {},
       "triggers": []
     }
   ]

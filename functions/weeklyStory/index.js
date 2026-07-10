@@ -1,7 +1,6 @@
 const cloudbase = require('@cloudbase/node-sdk')
 
 exports.main = async (event, context) => {
-  const envId = process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062'
   const app = cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV })
   const db = app.database()
 
