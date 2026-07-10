@@ -1,0 +1,9 @@
+{
+  "name": "aiCheer",
+  "version": "1.0.0",
+  "description": "AI cheer text generation",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}

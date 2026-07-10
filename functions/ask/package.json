@@ -1,0 +1,9 @@
+{
+  "name": "ask",
+  "version": "1.0.0",
+  "description": "AI secretary ask function",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}

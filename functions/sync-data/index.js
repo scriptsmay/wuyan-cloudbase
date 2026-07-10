@@ -66,7 +66,42 @@ exports.main = async (event, context) => {
     }
     results.synced.push('season_summaries')
 
-    // 5. 记录同步快照
+    // 5. 写入每日赛季快照（供故事卡周环比计算）
+    const today = new Date().toISOString().split('T')[0]
+    const metrics = extractMetrics(overview)
+    const overviewHash = md5(JSON.stringify(metrics))
+    const snapshotDoc = {
+      date: today,
+      season_id: season,
+      overview_hash: overviewHash,
+      metrics,
+      created_at: new Date().toISOString()
+    }
+    const snapExisting = await db.collection('season_snapshots').where({ date: today, season_id: season }).get()
+    if (snapExisting.data.length > 0) {
+      await db.collection('season_snapshots').doc(snapExisting.data[0]._id).update(snapshotDoc)
+      console.log(`[sync] season_snapshots updated for ${season} @ ${today}`)
+    } else {
+      await db.collection('season_snapshots').add(snapshotDoc)
+      console.log(`[sync] season_snapshots created for ${season} @ ${today}`)
+    }
+    results.synced.push('season_snapshots')
+
+    // 6. 清理 90 天前的旧快照
+    const cutoffDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    try {
+      const oldSnaps = await db.collection('season_snapshots').where({
+        date: db.command.lt(cutoffDate)
+      }).get()
+      for (const s of oldSnaps.data) {
+        await db.collection('season_snapshots').doc(s._id).remove()
+      }
+      console.log(`[sync] season_snapshots cleaned: ${oldSnaps.data.length} records before ${cutoffDate}`)
+    } catch (e) {
+      console.warn(`[sync] season_snapshots cleanup skipped: ${e.message}`)
+    }
+
+    // 7. 记录同步快照
     await db.collection('sync_snapshots').add({
       season, type: 'daily', status: 'success',
       source: `cloud-storage:data/derived/${season}/overview.json`,
@@ -105,4 +140,26 @@ async function download(app, envId, bucket, cloudPath) {
     console.error(`[sync] Download failed: ${cloudPath} - ${e.code || e.message}`)
   }
   return null
+}
+
+function extractMetrics(overview) {
+  const data = overview.data || overview
+  const summary = data.career_summary || {}
+  const season = data.season_stats || data
+  return {
+    win_rate: season.win_rate != null ? season.win_rate : (summary.win_rate || 0),
+    kda_ratio: season.kda_ratio != null ? season.kda_ratio : (summary.kda_ratio || 0),
+    battles: season.battles != null ? season.battles : (summary.total_matches || 0),
+    mvp: season.mvp != null ? season.mvp : (summary.mvp_count || 0),
+    wins: season.wins != null ? season.wins : 0,
+    loses: season.loses != null ? season.loses : 0,
+    avg_kills: season.avg_kills != null ? season.avg_kills : 0,
+    avg_deaths: season.avg_deaths != null ? season.avg_deaths : 0,
+    avg_assists: season.avg_assists != null ? season.avg_assists : 0
+  }
+}
+
+function md5(str) {
+  const crypto = require('crypto')
+  return crypto.createHash('md5').update(str).digest('hex')
 }

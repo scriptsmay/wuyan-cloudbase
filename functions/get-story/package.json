@@ -1,0 +1,9 @@
+{
+  "name": "get-story",
+  "version": "1.0.0",
+  "description": "Get weekly story from database",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}

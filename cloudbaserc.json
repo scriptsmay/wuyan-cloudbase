@@ -42,6 +42,66 @@
       "triggers": [
         { "name": "daily-sync-live", "type": "timer", "config": "0 0 5 * * * *" }
       ]
+    },
+    {
+      "name": "sync-schedule",
+      "runtime": "Nodejs18.15",
+      "timeout": 30,
+      "handler": "index.main",
+      "envVariables": {},
+      "triggers": [
+        { "name": "daily-sync-schedule", "type": "timer", "config": "0 0 6 * * * *" }
+      ]
+    },
+    {
+      "name": "get-schedule",
+      "runtime": "Nodejs18.15",
+      "timeout": 10,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
+    },
+    {
+      "name": "get-story",
+      "runtime": "Nodejs18.15",
+      "timeout": 10,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
+    },
+    {
+      "name": "weeklyStory",
+      "runtime": "Nodejs18.15",
+      "timeout": 60,
+      "handler": "index.main",
+      "envVariables": {},
+      "triggers": [
+        { "name": "weekly-story-gen", "type": "timer", "config": "0 0 1 * * 1 *" }
+      ]
+    },
+    {
+      "name": "ask",
+      "runtime": "Nodejs18.15",
+      "timeout": 30,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
+    },
+    {
+      "name": "aiCheer",
+      "runtime": "Nodejs18.15",
+      "timeout": 30,
+      "handler": "index.main",
+      "envVariables": {
+        "AUTH_TOKEN": "wuyan-mini-2026"
+      },
+      "triggers": []
     }
   ]
 }

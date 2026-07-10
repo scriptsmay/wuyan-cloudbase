@@ -1,0 +1,9 @@
+{
+  "name": "get-schedule",
+  "version": "1.0.0",
+  "description": "Get schedule from database",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}

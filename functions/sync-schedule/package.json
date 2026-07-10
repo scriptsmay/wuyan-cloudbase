@@ -1,0 +1,9 @@
+{
+  "name": "sync-schedule",
+  "version": "1.0.0",
+  "description": "Sync schedule from cloud storage to database",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}
