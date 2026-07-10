@@ -4,16 +4,16 @@ const DAILY_LIMIT = 50
 
 const MOOD_PROMPTS = {
   victory: '胜利时刻，欢呼雀跃，激情澎湃，用最燃的语气庆祝胜利',
-  trough: '低谷时期，温暖治愈，鼓励打气，相信选手一定能触底反弹',
+  low: '低谷时期，温暖治愈，鼓励打气，相信选手一定能触底反弹',
   daily: '日常陪伴，轻松温馨，像老朋友一样聊天，加油打气',
-  comeback: '求胜心切，热血沸腾，气势拉满，为选手呐喊助威'
+  eager: '求胜心切，热血沸腾，气势拉满，为选手呐喊助威'
 }
 
 const MOOD_NAMES = {
   victory: '胜利',
-  trough: '低谷',
+  low: '低谷',
   daily: '日常',
-  comeback: '求胜'
+  eager: '求胜'
 }
 
 exports.main = async (event, context) => {
@@ -46,9 +46,12 @@ exports.main = async (event, context) => {
       return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
     }
 
-    const systemPrompt = `你是一位KPL选手无言的超级粉丝，擅长写应援文案。
+    const systemPrompt = `你是一位KPL（王者荣耀职业联赛）选手无言的超级粉丝，擅长写应援文案。
+所有文案必须围绕电竞比赛、王者荣耀游戏场景，禁止使用打球、球场等传统体育词汇。
 请根据用户选择的心情，写3条简短有力的应援文案（每条不超过30字）和1句emoji配文。
+3条文案要尽量分散使用不同的英雄名字，不要3条都写同一个英雄。
 文案要自然融入选手的真实数据，比如KDA、胜率、英雄名字等。
+emoji_caption只包含emoji和简短感叹语，不要出现战队名（如KSG）或选手真实姓名。
 风格：${MOOD_PROMPTS[mood]}。
 只输出JSON格式：{"lines": ["文案1", "文案2", "文案3"], "emoji_caption": "🎉..." }
 不要输出任何其他文字。`
@@ -58,10 +61,6 @@ exports.main = async (event, context) => {
     const seasonId = overview.season || ''
     const seasonStats = (data.season_stats || []).find(s => s.season_id === seasonId) || {}
     const career = data.career_summary || {}
-    const heroStats = data.hero_stats || []
-    const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
-    const heroName = heroTop.length > 0 ? heroTop[0].hero_name : ''
-    const heroWinRate = heroTop.length > 0 ? heroTop[0].win_rate : ''
 
     // 胜率统一格式化
     const fmtRate = (v) => {
@@ -79,6 +78,10 @@ exports.main = async (event, context) => {
       return String(v)
     }
 
+    const heroStats = data.hero_stats || []
+    const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
+    const heroList = heroTop.map(h => `${h.hero_name}(${fmtRate(h.win_rate)})`).join('、')
+
     const kda = seasonStats.kda_ratio != null ? seasonStats.kda_ratio : (career.kda_ratio || '暂无')
     const winRate = seasonStats.win_rate != null ? fmtRate(seasonStats.win_rate) : fmtRate(career.win_rate)
     const totalMatches = seasonStats.battles != null ? seasonStats.battles : (career.total_matches || '暂无')
@@ -88,7 +91,7 @@ exports.main = async (event, context) => {
 当前赛季KDA：${kda}
 胜率：${winRate}
 总场次：${totalMatches}
-常用英雄：${heroName || '暂无'}(${fmtRate(heroWinRate)})
+常用英雄（含胜率）：${heroList || '暂无'}
 心情：${MOOD_NAMES[mood] || mood}`
 
     if (customText) {
@@ -141,18 +144,51 @@ function jsonResp(statusCode, data) {
 }
 
 function parseAIResult(text) {
+  // 去除 markdown 代码块标记
+  var cleaned = text.replace(/```(?:json)?/gi, '').trim()
+
+  // 尝试直接解析
   try {
-    const jsonStr = text.match(/\{[\s\S]*\}/)
+    var parsed = JSON.parse(cleaned)
+    var lines = Array.isArray(parsed.lines) ? parsed.lines.filter(function (l) { return typeof l === 'string' && l.trim() }) : []
+    var emoji = typeof parsed.emoji_caption === 'string' ? parsed.emoji_caption : ''
+    if (lines.length > 0) {
+      return { lines: lines.slice(0, 3), emoji_caption: emoji || '🎉💪🔥' }
+    }
+  } catch (_) {}
+
+  // 尝试正则提取 JSON
+  try {
+    var jsonStr = cleaned.match(/\{[\s\S]*\}/)
     if (jsonStr) {
-      const parsed = JSON.parse(jsonStr[0])
-      if (Array.isArray(parsed.lines) && typeof parsed.emoji_caption === 'string') {
-        return parsed
+      var parsed2 = JSON.parse(jsonStr[0])
+      var lines2 = Array.isArray(parsed2.lines) ? parsed2.lines.filter(function (l) { return typeof l === 'string' && l.trim() }) : []
+      var emoji2 = typeof parsed2.emoji_caption === 'string' ? parsed2.emoji_caption : ''
+      if (lines2.length > 0) {
+        return { lines: lines2.slice(0, 3), emoji_caption: emoji2 || '🎉💪🔥' }
       }
     }
   } catch (_) {}
-  const lines = text.split(/\n+/).filter(l => l.trim().length > 0 && !l.includes('{') && !l.includes('}')).slice(0, 3)
+
+  // fallback: 逐行提取纯文案，排除 JSON 结构行
+  var rawLines = cleaned.split(/\n+/)
+    .map(function (l) { return l.trim() })
+    .filter(function (l) {
+      if (!l) return false
+      if (l.includes('{') || l.includes('}')) return false
+      if (l.includes('":') || l.includes('"lines"') || l.includes('"emoji')) return false
+      if (l.startsWith('"') && l.endsWith('",')) return false
+      // 去掉引号和逗号后的纯文本
+      return true
+    })
+    .map(function (l) {
+      return l.replace(/^["'\s]+|["'\s,]+$/g, '')
+    })
+    .filter(function (l) { return l.length > 2 })
+    .slice(0, 3)
+
   return {
-    lines: lines.length > 0 ? lines : ['无言加油！', '相信你！', '永远支持你！'],
+    lines: rawLines.length > 0 ? rawLines : ['无言加油！', '相信你！', '永远支持你！'],
     emoji_caption: '🎉💪🔥'
   }
 }
