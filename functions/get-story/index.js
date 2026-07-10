@@ -103,15 +103,23 @@ exports.main = async (event, context) => {
 }
 
 function normalizeStats(stats) {
-    const winRateDiff = stats.win_rate_diff != null
+    // 兼容驼峰、下划线、嵌套三种格式，统一输出下划线
+    let winRateDiff = stats.win_rate_diff != null
         ? stats.win_rate_diff
-        : (stats.win_rate && stats.win_rate.diff != null ? Math.round(stats.win_rate.diff * 1000) / 10 : 0)
+        : (stats.winRateDiff != null
+            ? stats.winRateDiff
+            : (stats.win_rate && stats.win_rate.diff != null ? Math.round(stats.win_rate.diff * 1000) / 10 : 0))
+    if (winRateDiff > 0 && winRateDiff < 1) winRateDiff = Math.round(winRateDiff * 1000) / 10
     const kdaDiff = stats.kda_diff != null
         ? stats.kda_diff
-        : (stats.kda_ratio && stats.kda_ratio.diff != null ? stats.kda_ratio.diff : 0)
+        : (stats.kdaDiff != null
+            ? stats.kdaDiff
+            : (stats.kda_ratio && stats.kda_ratio.diff != null ? stats.kda_ratio.diff : 0))
     const battlesDiff = stats.battles_diff != null
         ? stats.battles_diff
-        : (stats.battles && stats.battles.diff != null ? stats.battles.diff : 0)
+        : (stats.battlesDiff != null
+            ? stats.battlesDiff
+            : (stats.battles && stats.battles.diff != null ? stats.battles.diff : 0))
 
     return Object.assign({}, stats, {
         win_rate_diff: winRateDiff,

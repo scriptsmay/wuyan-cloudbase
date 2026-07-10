@@ -2,6 +2,20 @@ const crypto = require('crypto')
 const cloudbase = require('@cloudbase/node-sdk')
 
 const CACHE_TTL = 5 * 60 * 1000
+const BJ_OFFSET = 8 * 60 * 60 * 1000
+
+function getBjDate(ts) {
+  const d = ts ? new Date(ts) : new Date()
+  const utc = d.getTime() + d.getTimezoneOffset() * 60 * 1000
+  return new Date(utc + BJ_OFFSET)
+}
+
+function formatBjTime(startTs) {
+  const d = getBjDate(startTs * 1000)
+  const hh = String(d.getUTCHours()).padStart(2, '0')
+  const mm = String(d.getUTCMinutes()).padStart(2, '0')
+  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${hh}:${mm}`
+}
 
 exports.main = async (event, context) => {
   const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
@@ -159,9 +173,9 @@ async function fetchContextData(db) {
   }
 
   try {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() + 1
+    const nowBj = getBjDate()
+    const year = nowBj.getUTCFullYear()
+    const month = nowBj.getUTCMonth() + 1
     const liveRes = await db.collection('live_streams')
       .where({ year, month })
       .orderBy('stream_date', 'desc')
@@ -191,9 +205,9 @@ async function fetchContextData(db) {
       const doc = schedRes.data[0]
       const matches = doc.matches || []
       const nowTs = Math.floor(Date.now() / 1000)
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const todayStartTs = Math.floor(todayStart.getTime() / 1000)
+      const todayBj = getBjDate()
+      todayBj.setUTCHours(0, 0, 0, 0)
+      const todayStartTs = Math.floor(todayBj.getTime() / 1000) - BJ_OFFSET / 1000
       const todayEndTs = todayStartTs + 86400
 
       const todayMatches = matches.filter(m => {
@@ -210,8 +224,7 @@ async function fetchContextData(db) {
       }).slice(-5).reverse()
 
       const fmt = (m) => {
-        const d = new Date((m.start_ts || 0) * 1000)
-        const dateStr = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        const dateStr = formatBjTime(m.start_ts || 0)
         const score = m.status === 4 ? ` ${m.score_a || 0}:${m.score_b || 0}` : ''
         return `${dateStr} ${m.team_a || ''} vs ${m.team_b || ''}${score} (${m.stage || m.date || ''})`
       }
@@ -373,7 +386,11 @@ async function getDailyLimit(db, module) {
 }
 
 async function checkUsageLimit(db, module, dailyLimit, openid) {
-  const today = new Date().toISOString().split('T')[0]
+  const bjNow = getBjDate()
+  const y = bjNow.getUTCFullYear()
+  const m = String(bjNow.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(bjNow.getUTCDate()).padStart(2, '0')
+  const today = `${y}-${m}-${d}`
   const docId = openid ? `${module}_${openid}_${today}` : `${module}_${today}`
   try {
     const res = await db.collection('usage_limits').doc(docId).get()
