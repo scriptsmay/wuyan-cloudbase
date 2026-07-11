@@ -57,6 +57,18 @@
       ]
     },
     {
+      "name": "sync-schedule-live",
+      "runtime": "Nodejs18.15",
+      "timeout": 30,
+      "handler": "index.main",
+      "envVariables": {
+        "TCB_ENV": "trial-sh-d1gqznm4577d6a062"
+      },
+      "triggers": [
+        { "name": "live-sync-schedule", "type": "timer", "config": "0 */10 * * * * *" }
+      ]
+    },
+    {
       "name": "get-schedule",
       "runtime": "Nodejs18.15",
       "timeout": 10,

@@ -1,4 +1,15 @@
+/**
+ * sync-schedule — 每日赛程全量兜底同步
+ *
+ * 从 CloudBase 云存储读取 schedule.json（由 kpl-data-daily GitHub Action 采集上传），
+ * 按 schedule_id 合并到 match_schedules。使用事务版本控制，与 sync-schedule-live
+ * 并发时通过 revision 防止后写覆盖先写。
+ */
 const cloudbase = require('@cloudbase/node-sdk')
+const {
+  mergeScheduleMatches,
+  recordSyncSnapshot
+} = require('./lib/schedule-merge')
 
 exports.main = async (event, context) => {
   const envId = process.env.TCB_ENV
@@ -15,11 +26,12 @@ exports.main = async (event, context) => {
   const result = { season: null, status: 'pending', matches: 0, error: null }
 
   try {
+    // 1. 读取赛季元信息
     const seasonRaw = await download(app, envId, bucket, 'data/latest/current-season.json')
     if (!seasonRaw) {
       result.status = 'error'
       result.error = 'current-season.json not found'
-      await recordSnapshot(db, null, 'error', result.error)
+      await recordSyncSnapshot(db, { type: 'schedule', season: null, status: 'error', error: result.error })
       return result
     }
     const seasonMeta = JSON.parse(seasonRaw)
@@ -27,45 +39,82 @@ exports.main = async (event, context) => {
     result.season = season
     console.log(`[sync-schedule] Current season: ${season}`)
 
+    // 2. 读取赛程文件
     const scheduleRaw = await download(app, envId, bucket, `data/derived/${season}/schedule.json`)
     if (!scheduleRaw) {
       result.status = 'skipped'
       result.error = 'schedule.json not found'
-      await recordSnapshot(db, season, 'skipped', result.error)
+      await recordSyncSnapshot(db, { type: 'schedule', season, status: 'skipped', error: result.error })
       return result
     }
     const schedule = JSON.parse(scheduleRaw)
     const matches = schedule.matches || []
     result.matches = matches.length
 
-    const doc = {
-      season_id: schedule.season_id || season,
-      season_name: schedule.season_name || season,
-      team_id: schedule.team_id || '',
-      matches,
-      updated_at: schedule.updated_at || new Date().toISOString(),
-      source_status: 'ok'
+    if (matches.length === 0) {
+      result.status = 'skipped'
+      result.error = 'schedule.json has no matches'
+      await recordSyncSnapshot(db, { type: 'schedule', season, status: 'skipped', error: result.error })
+      return result
     }
 
-    const existing = await db.collection('match_schedules').where({ season_id: doc.season_id }).get()
-    if (existing.data.length > 0) {
-      await db.collection('match_schedules').doc(existing.data[0]._id).update(doc)
-      console.log(`[sync-schedule] match_schedules updated for ${season} (${matches.length} matches)`)
-    } else {
-      await db.collection('match_schedules').add(doc)
-      console.log(`[sync-schedule] match_schedules created for ${season} (${matches.length} matches)`)
+    // 3. 为 matches 补全 season_name（convertKplMatches 会写，但 schedule.json 也可能缺失）
+    const seasonName = schedule.season_name || season
+    for (const m of matches) {
+      if (!m.season_name) m.season_name = seasonName
     }
 
-    result.status = 'success'
-    await recordSnapshot(db, season, 'success', null, `data/derived/${season}/schedule.json`)
+    // 4. 事务合并（isFullSync=true，每日文件 sourceFetchedAt = schedule.json.updated_at）
+    const sourceFetchedAt = schedule.updated_at || new Date().toISOString()
+    const mergeResult = await mergeScheduleMatches(db, season, matches, {
+      isFullSync: true,
+      isLive: false,
+      sourceFetchedAt,
+      sourceStatus: schedule.source_status || 'ok',
+      maxRetries: 3
+    })
+
+    console.log(
+      `[sync-schedule] Merge result: action=${mergeResult.action}, ` +
+      `matched=${mergeResult.matchedCount}, changed=${mergeResult.changedCount}, ` +
+      `revision=${mergeResult.revision}, fallback=${mergeResult.fallbackUsed || false}`
+    )
+
+    result.status = mergeResult.action === 'skipped' ? 'skipped'
+      : mergeResult.action === 'no_change' ? 'no_change'
+      : 'success'
+    result.matched_count = mergeResult.matchedCount
+    result.changed_count = mergeResult.changedCount
+    result.revision = mergeResult.revision
+    result.fallback_used = mergeResult.fallbackUsed || false
+
+    // 5. 快照记录
+    await recordSyncSnapshot(db, {
+      type: 'schedule',
+      season,
+      status: result.status,
+      matchedCount: mergeResult.matchedCount,
+      changedCount: mergeResult.changedCount,
+      sourceFetchedAt,
+      error: result.fallback_used ? 'fallback merge key used' : null
+    })
+
     console.log('[sync-schedule] Done')
+
   } catch (err) {
     console.error('[sync-schedule] Error:', err.message, err.stack)
     result.status = 'error'
     result.error = err.message
     try {
-      await recordSnapshot(db, result.season || 'unknown', 'error', err.message)
-    } catch (_) {}
+      await recordSyncSnapshot(db, {
+        type: 'schedule',
+        season: result.season || 'unknown',
+        status: 'error',
+        error: err.message
+      })
+    } catch (_) {
+      // 快照写入失败不阻塞主流程
+    }
   }
 
   return result
@@ -83,15 +132,4 @@ async function download(app, envId, bucket, cloudPath) {
     console.error(`[sync-schedule] Download failed: ${cloudPath} - ${e.code || e.message}`)
   }
   return null
-}
-
-async function recordSnapshot(db, season, status, error, source) {
-  await db.collection('sync_snapshots').add({
-    season: season || 'unknown',
-    type: 'schedule',
-    status,
-    error: error || null,
-    source: source || '',
-    updated_at: new Date().toISOString()
-  })
 }

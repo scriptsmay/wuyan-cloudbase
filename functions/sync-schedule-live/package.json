@@ -1,0 +1,9 @@
+{
+  "name": "sync-schedule-live",
+  "version": "1.0.0",
+  "description": "Match-day high-frequency schedule sync — fetches KPL API within match windows",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.11.0"
+  }
+}
