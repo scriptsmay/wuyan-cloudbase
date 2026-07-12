@@ -1,5 +1,5 @@
 {
-  "name": "weeklyStory",
+  "name": "weekly-story",
   "version": "1.0.0",
   "description": "Weekly story generation",
   "main": "index.js",

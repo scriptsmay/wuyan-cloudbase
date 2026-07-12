@@ -89,7 +89,7 @@
       "triggers": []
     },
     {
-      "name": "weeklyStory",
+      "name": "weekly-story",
       "runtime": "Nodejs18.15",
       "timeout": 60,
       "handler": "index.main",
@@ -112,7 +112,7 @@
       "triggers": []
     },
     {
-      "name": "aiCheer",
+      "name": "ai-cheer",
       "runtime": "Nodejs18.15",
       "timeout": 60,
       "handler": "index.main",

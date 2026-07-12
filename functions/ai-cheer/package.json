@@ -1,5 +1,5 @@
 {
-  "name": "aiCheer",
+  "name": "ai-cheer",
   "version": "1.0.0",
   "description": "AI cheer text generation",
   "main": "index.js",
