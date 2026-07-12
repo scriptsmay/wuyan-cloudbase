@@ -23,7 +23,7 @@ const cases = [
 ]
 
 for (const modulePath of modulePaths) {
-  const { computeWindowStatus } = require(modulePath)
+  const { computeWindowStatus, convertKplMatches, normalizeKplScheduleStatus } = require(modulePath)
 
   test(`${modulePath} uses absolute timestamps for exact window boundaries`, () => {
     for (const [label, isoTime, expected] of cases) {
@@ -41,5 +41,29 @@ for (const modulePath of modulePaths) {
       active_count: 0,
       computed_at: now.toISOString()
     })
+  })
+
+  test(`${modulePath} normalizes observed KPL live status to canonical ongoing`, () => {
+    assert.equal(normalizeKplScheduleStatus(1), 1)
+    assert.equal(normalizeKplScheduleStatus(3), 2)
+    assert.equal(normalizeKplScheduleStatus(4), 4)
+
+    const result = convertKplMatches([{
+      scheduleid: 'KPL2026S2M4W3D1',
+      start_timestamp: '1783836000',
+      team_a_name: '北京JDG',
+      team_b_name: 'KSG',
+      schedule_status: 3,
+      team_a_score: 1,
+      team_b_score: 0,
+      bo_total: 5,
+      stage_name: '常规赛第二轮',
+      location_name: '北京'
+    }], 'KPL2026S2')
+
+    assert.equal(result.ksgCount, 1)
+    assert.equal(result.matches[0].status, 2)
+    assert.equal(result.matches[0].score_a, 1)
+    assert.equal(result.matches[0].score_b, 0)
   })
 }

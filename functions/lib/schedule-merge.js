@@ -119,7 +119,7 @@ async function fetchKplScheduleList(seasonId, timeout = 15000) {
  */
 function convertKplMatches(rawMatches, seasonId) {
   const allMatches = rawMatches.map(m => {
-    const status = parseInt(m.schedule_status, 10) || 1
+    const status = normalizeKplScheduleStatus(m.schedule_status)
     const teamA = m.team_a_name || ''
     const teamB = m.team_b_name || ''
     const match = {
@@ -146,6 +146,20 @@ function convertKplMatches(rawMatches, seasonId) {
 
   console.log(`[schedule-merge] KPL fetch: ${allMatches.length} total, ${ksgMatches.length} KSG matches`)
   return { matches: ksgMatches, allCount: allMatches.length, ksgCount: ksgMatches.length }
+}
+
+/**
+ * KPL 官方 schedule_status 与小程序 canonical 状态码不完全一致。
+ *
+ * API canonical: 1=未开始, 2=进行中, 3=延期, 4=已结束。
+ * 已观测官方值: 1=未开始, 3=进行中, 4=已结束。
+ */
+function normalizeKplScheduleStatus(rawStatus) {
+  const raw = parseInt(rawStatus, 10)
+  if (raw === 3) return 2
+  if (raw === 4) return 4
+  if (raw === 1) return 1
+  return 1
 }
 
 function tsToBeijingDate(tsStr) {
@@ -404,6 +418,7 @@ module.exports = {
   computeWindowStatus,
   fetchKplScheduleList,
   convertKplMatches,
+  normalizeKplScheduleStatus,
   mergeScheduleMatches,
   recordSyncSnapshot,
   isTransactionConflict,
