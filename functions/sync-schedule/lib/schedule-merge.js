@@ -5,21 +5,6 @@
  * get-schedule API 也复用 computeWindowStatus 纯函数以返回即时计算的 window_active。
  */
 
-// ---- 时区工具 ----
-
-/** 返回 Asia/Shanghai 时区的当前 Date 对象 */
-function nowInShanghai() {
-  const s = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
-  return new Date(s)
-}
-
-/** 返回 Asia/Shanghai 时区当天零点的 Date 对象 */
-function todayStartInShanghai() {
-  const now = nowInShanghai()
-  now.setHours(0, 0, 0, 0)
-  return now
-}
-
 // ---- 窗口计算 ----
 
 /**
@@ -29,7 +14,7 @@ function todayStartInShanghai() {
  * expected_duration = bo >= 7 ? 5h : 4h
  *
  * @param {Object} match - { start_ts, bo }
- * @param {Date} now - Asia/Shanghai 当前时间
+ * @param {Date} now - 当前时刻（Date 内部为 UTC epoch，与运行时时区无关）
  * @returns {boolean}
  */
 function isMatchInWindow(match, now) {
@@ -52,13 +37,13 @@ function isMatchInWindow(match, now) {
  * 注意：每场比赛独立计算窗口，不合并成超长窗口。
  *
  * @param {Array<Object>} matches - match_schedules.matches[]
+ * @param {Date} now - 可注入的当前时刻，默认为真实当前时间
  * @returns {{ window_active: boolean, active_count: number, computed_at: string }}
  */
-function computeWindowStatus(matches) {
+function computeWindowStatus(matches, now = new Date()) {
   if (!Array.isArray(matches) || matches.length === 0) {
-    return { window_active: false, active_count: 0, computed_at: new Date().toISOString() }
+    return { window_active: false, active_count: 0, computed_at: now.toISOString() }
   }
-  const now = nowInShanghai()
   const activeCount = matches.filter(m => isMatchInWindow(m, now)).length
   return {
     window_active: activeCount > 0,
@@ -415,8 +400,6 @@ async function recordSyncSnapshot(db, snap) {
 }
 
 module.exports = {
-  nowInShanghai,
-  todayStartInShanghai,
   isMatchInWindow,
   computeWindowStatus,
   fetchKplScheduleList,
