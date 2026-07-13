@@ -13,10 +13,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const ALLOWED_MOODS = new Set(['victory', 'low', 'daily', 'hope'])
 const MOOD_ALIASES = { eager: 'hope' }
 const MOOD_PROMPTS = {
-  victory: '胜利时刻，欢呼雀跃，激情澎湃，用最燃的语气庆祝胜利',
-  low: '低谷时期，温暖治愈，鼓励打气，相信选手会稳稳找回状态',
-  daily: '日常陪伴，轻松温馨，像长期并肩的老朋友一样加油',
-  hope: '求胜时刻，热血坚定，气势拉满，为下一场全力呐喊'
+  victory: '胜利时刻，全力欢呼！用追竞女孩/男孩最燃的语气庆祝，有夺冠氛围感',
+  low: '低谷时期，温暖守护。用同担之间互相打气的语气，相信选手会杀回来',
+  daily: '日常陪伴，轻松有活力。像同担在超话里聊天一样自然，元气满满地加油',
+  hope: '求胜时刻，热血拉满！用最冲的语气给下一场蓄力，气势不能输'
 }
 const MOOD_NAMES = { victory: '胜利', low: '低谷', daily: '日常', hope: '求胜' }
 const DEFAULT_BLOCKED_PATTERNS = [/自杀/u, /博彩/u, /色情/u, /仇恨/u]
@@ -153,12 +153,14 @@ function addRef(refs, promptLines, label, value, source) {
 function buildSystemPrompt(mood, source) {
   return [
     '你是 KPL 选手无言的粉丝应援文案助手。',
-    '只允许使用下方“可引用数据”中的具体数字、百分比、英雄名；没有提供的数据绝不能猜测。',
+    '受众是 18 岁左右的追竞年轻人，用语要贴合粉圈氛围——用”同担””守护””冲冲冲””杀回来”这类词，不用”老友””朋友””稳重”等长辈口吻。',
+    '语气要有活力、有朝气，像超话里同担发帖一样自然，不用书面语。',
+    '只允许使用下方”可引用数据”中的具体数字、百分比、英雄名；没有提供的数据绝不能猜测。',
     '输出 1 到 3 条中文短句，每条不超过 30 个汉字，并给出一句简短 emoji_caption。',
     '不得使用传统球类运动词汇，不得声称单场 MVP、本周表现或未提供的赛程结果。',
     `语气：${MOOD_PROMPTS[mood]}`,
     `可引用数据：${source.promptLines.length ? source.promptLines.join('；') : '无，生成纯情绪应援文案'}`,
-    '只输出合法 JSON：{"lines":["文案"],"emoji_caption":"配文"}'
+    '只输出合法 JSON：{“lines”:[“文案”],”emoji_caption”:”配文”}'
   ].join('\n')
 }
 
