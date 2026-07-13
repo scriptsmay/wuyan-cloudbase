@@ -172,16 +172,14 @@ async function consumeRequestQuota(subjectId, ip) {
     }
     const now = new Date().toISOString();
     for (const item of current) {
-      await collection
-        .doc(item.id)
-        .set({
-          module: 'checkin',
-          dimension: item.dimension,
-          minute,
-          count: item.count + 1,
-          limit: item.limit,
-          updated_at: now,
-        });
+      await collection.doc(item.id).set({
+        module: 'checkin',
+        dimension: item.dimension,
+        minute,
+        count: item.count + 1,
+        limit: item.limit,
+        updated_at: now,
+      });
     }
     return true;
   });

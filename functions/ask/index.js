@@ -242,7 +242,7 @@ async function fetchContextData(db) {
   return { overviewData, liveData, scheduleData, refs };
 }
 
-function buildSystemPrompt(overview, live) {
+function buildSystemPrompt(overview, _live) {
   const player = overview.player_name || '无言';
   const team = overview.team_name || '';
   return `你是${player}的贴身小秘书，语气亲切活泼，带粉圈感。
@@ -429,7 +429,7 @@ async function checkUsageLimit(db, module, dailyLimit, subjectId, requestId) {
   }
 }
 
-async function recordUsage(db, module, source) {
+async function recordUsage(_db, _module, _source) {
   // usage count already updated in checkUsageLimit
   return true;
 }

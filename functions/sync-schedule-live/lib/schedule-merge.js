@@ -122,7 +122,7 @@ async function fetchKplScheduleList(seasonId, timeout = 15000) {
  * @param {string} seasonId - 赛季 ID（用于日志）
  * @returns {{ matches: Array<Object>, allCount: number, ksgCount: number }}
  */
-function convertKplMatches(rawMatches, seasonId) {
+function convertKplMatches(rawMatches, _seasonId) {
   const allMatches = rawMatches.map((m) => {
     const status = normalizeKplScheduleStatus(m.schedule_status);
     const teamA = m.team_a_name || '';
