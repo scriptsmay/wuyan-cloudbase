@@ -1,0 +1,9 @@
+{
+  "name": "get-heroes",
+  "version": "1.0.0",
+  "description": "Get full hero stats list",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}
