@@ -1,0 +1,9 @@
+{
+  "name": "checkin",
+  "version": "1.0.0",
+  "description": "Daily checkin API",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}

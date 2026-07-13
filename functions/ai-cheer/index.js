@@ -1,325 +1,243 @@
+'use strict'
+
 const cloudbase = require('@cloudbase/node-sdk')
+const { randomUUID } = require('node:crypto')
+const {
+  ENV_ID, parseBody, getHeader, resolveIdentity, successResponse, errorResponse,
+  optionsResponse, getRequestId, getClientIp, shanghaiDate, normalizeClientId,
+  isValidClientId, hashValue
+} = require('./runtime')
 
-const BJ_OFFSET = 8 * 60 * 60 * 1000
-
-function getBjDate(ts) {
-  const d = ts ? new Date(ts) : new Date()
-  const utc = d.getTime() + d.getTimezoneOffset() * 60 * 1000
-  return new Date(utc + BJ_OFFSET)
-}
-
+const AI_MODEL = process.env.AI_MODEL || 'hy3'
+const DAY_MS = 24 * 60 * 60 * 1000
+const ALLOWED_MOODS = new Set(['victory', 'low', 'daily', 'hope'])
+const MOOD_ALIASES = { eager: 'hope' }
 const MOOD_PROMPTS = {
   victory: '胜利时刻，欢呼雀跃，激情澎湃，用最燃的语气庆祝胜利',
-  low: '低谷时期，温暖治愈，鼓励打气，相信选手一定能触底反弹',
-  daily: '日常陪伴，轻松温馨，像老朋友一样聊天，加油打气',
-  eager: '求胜心切，热血沸腾，气势拉满，为选手呐喊助威'
+  low: '低谷时期，温暖治愈，鼓励打气，相信选手会稳稳找回状态',
+  daily: '日常陪伴，轻松温馨，像长期并肩的老朋友一样加油',
+  hope: '求胜时刻，热血坚定，气势拉满，为下一场全力呐喊'
 }
+const MOOD_NAMES = { victory: '胜利', low: '低谷', daily: '日常', hope: '求胜' }
+const DEFAULT_BLOCKED_PATTERNS = [/自杀/u, /博彩/u, /色情/u, /仇恨/u]
 
-const MOOD_NAMES = {
-  victory: '胜利',
-  low: '低谷',
-  daily: '日常',
-  eager: '求胜'
-}
+const app = cloudbase.init({ env: ENV_ID })
+const db = app.database()
 
-exports.main = async (event, context) => {
-  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
-  const db = app.database()
+exports.main = async (event) => {
+  const requestId = getRequestId(event)
+  const origin = getHeader(event, 'origin')
+  const method = String(event.httpMethod || event.requestContext && event.requestContext.httpMethod || 'POST').toUpperCase()
+  if (method === 'OPTIONS') return optionsResponse(requestId, origin)
+  if (method !== 'POST') return errorResponse(405, 'METHOD_NOT_ALLOWED', '仅支持 POST', requestId, origin)
 
-  const body = parseBody(event)
-  const query = event.queryStringParameters || {}
-  const token = query.token || body.token || ''
-  const AUTH_TOKEN = process.env.AUTH_TOKEN
-  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
-    return jsonResp(401, { code: 401, message: 'Unauthorized', data: null })
+  let body
+  try { body = parseBody(event) } catch (_) {
+    return errorResponse(400, 'INVALID_ARGUMENT', '请求体不是合法 JSON', requestId, origin)
   }
 
-  const mood = (body.mood || 'daily').toLowerCase()
-  const customText = body.text || ''
-  const openid = event.openid || event.wxOpenid || body._cid || query._cid || event._cid || ''
+  const identity = await resolveIdentity(app, event, body)
+  if (!identity.ok) return errorResponse(401, 'SESSION_REQUIRED', '匿名会话无效或已过期', requestId, origin)
 
-  if (!MOOD_PROMPTS[mood]) {
-    return jsonResp(400, { code: 400, message: '心情参数不支持', data: null })
+  const moodInput = typeof body.mood === 'string' ? body.mood.toLowerCase() : 'daily'
+  const mood = MOOD_ALIASES[moodInput] || moodInput
+  const text = typeof body.text === 'string' ? body.text.trim() : ''
+  const clientId = normalizeClientId(body.client_id || body._cid || 'unknown')
+  if (!ALLOWED_MOODS.has(mood) || textLength(text) > 120 || !isValidClientId(clientId)) {
+    return errorResponse(400, 'INVALID_ARGUMENT', '心情、补充文字或 client_id 不合法', requestId, origin)
   }
+  if (isContentBlocked(text)) return errorResponse(451, 'CONTENT_BLOCKED', '补充文字未通过内容安全检查', requestId, origin)
 
   try {
-    const overview = await getLatestOverview(db)
-    if (!overview) {
-      return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
-    }
-
-    const dailyLimit = await getDailyLimit(db, 'aiCheer')
-    const limitOk = await checkUsageLimit(db, 'aiCheer', dailyLimit, openid)
-    if (!limitOk) {
-      return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
-    }
-
-    const systemPrompt = `你是一位KPL（王者荣耀职业联赛）选手无言的超级粉丝，擅长写应援文案。
-所有文案必须围绕电竞比赛、王者荣耀游戏场景，禁止使用打球、球场等传统体育词汇。
-请根据用户选择的心情，写3条简短有力的应援文案（每条不超过30字）和1句emoji配文。
-3条文案要尽量分散使用不同的英雄名字，不要3条都写同一个英雄。
-文案要自然融入选手的真实数据，比如KDA、胜率、英雄名字等。
-emoji_caption只包含emoji和简短感叹语，不要出现战队名（如KSG）或选手真实姓名。
-风格：${MOOD_PROMPTS[mood]}。
-只输出JSON格式：{"lines": ["文案1", "文案2", "文案3"], "emoji_caption": "🎉..." }
-不要输出任何其他文字。`
-
-    const rawData = overview.data || {}
-    const data = rawData.data || rawData
-    const seasonId = overview.season || ''
-    const seasonStats = (data.season_stats || []).find(s => s.season_id === seasonId) || {}
-    const career = data.career_summary || {}
-
-    // 胜率统一格式化
-    const fmtRate = (v) => {
-      if (v == null) return '暂无'
-      if (typeof v === 'string') {
-        if (v.includes('%')) return v
-        const n = parseFloat(v)
-        if (!isNaN(n) && n <= 1) return (n * 100).toFixed(1) + '%'
-        return v
-      }
-      if (typeof v === 'number') {
-        if (v <= 1) return (v * 100).toFixed(1) + '%'
-        return v.toFixed(1) + '%'
-      }
-      return String(v)
-    }
-
-    const heroStats = data.hero_stats || []
-    const heroTop = heroStats.sort((a, b) => (b.battles || 0) - (a.battles || 0)).slice(0, 5)
-    const heroList = heroTop.map(h => `${h.hero_name}(${fmtRate(h.win_rate)})`).join('、')
-
-    const kda = seasonStats.kda_ratio != null ? seasonStats.kda_ratio : (career.kda_ratio || '暂无')
-    const winRate = seasonStats.win_rate != null ? fmtRate(seasonStats.win_rate) : fmtRate(career.win_rate)
-    const totalMatches = seasonStats.battles != null ? seasonStats.battles : (career.total_matches || '暂无')
-
-    let userPrompt = `选手：无言
-战队：${overview.team_name || ''}
-当前赛季KDA：${kda}
-胜率：${winRate}
-总场次：${totalMatches}
-常用英雄（含胜率）：${heroList || '暂无'}
-心情：${MOOD_NAMES[mood] || mood}`
-
-    if (customText) {
-      userPrompt += `\n用户补充：${customText}`
-    }
-
-    userPrompt += `\n请生成3条应援文案和1句emoji配文，输出JSON格式。`
-
-    let result = null
-    try {
-      let aiText = await callAI(app, systemPrompt, userPrompt)
-      result = parseAIResult(aiText)
-      // 解析失败时重试一次
-      if (!result) {
-        console.warn('[aiCheer] first parse failed, retrying. raw:', aiText.slice(0, 200))
-        const retryPrompt = userPrompt + '\n注意：必须严格输出合法JSON，不要任何其他文字。'
-        aiText = await callAI(app, systemPrompt, retryPrompt)
-        result = parseAIResult(aiText)
-      }
-      // 重试仍失败，记录原始输出
-      if (!result) {
-        await recordAIReport(db, 'aiCheer', `mood=${mood}`, 'PARSE_FAILED: ' + aiText, '')
-      }
-    } catch (aiErr) {
-      console.error('[aiCheer] AI call failed:', aiErr.message)
-      await recordAIReport(db, 'aiCheer', `mood=${mood}`, '', aiErr.message)
-      return jsonResp(503, { code: 503, message: '文案生成失败，请重试', data: null })
-    }
-
-    if (!result) {
-      return jsonResp(503, { code: 503, message: '文案生成失败，请重试', data: null })
-    }
-
-    await recordUsage(db, 'aiCheer')
-    await recordAIReport(db, 'aiCheer', `mood=${mood}`, JSON.stringify(result), '')
-
-    return jsonResp(200, { code: 200, message: 'ok', data: result })
-  } catch (err) {
-    console.error('[aiCheer] Error:', err.message, err.stack)
-    return jsonResp(500, { code: 500, message: err.message, data: null })
-  }
-}
-
-function parseBody(event) {
-  if (event.body) {
-    try {
-      if (event.isBase64Encoded) {
-        const buf = Buffer.from(event.body, 'base64')
-        return JSON.parse(buf.toString('utf-8'))
-      }
-      return typeof event.body === 'string' ? JSON.parse(event.body) : event.body
-    } catch (_) {
-      return {}
-    }
-  }
-  return {}
-}
-
-function jsonResp(statusCode, data) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(data)
-  }
-}
-
-function parseAIResult(text) {
-  // 去除 markdown 代码块标记
-  var cleaned = text.replace(/```(?:json)?/gi, '').trim()
-
-  // 尝试直接解析
-  try {
-    var parsed = JSON.parse(cleaned)
-    var lines = Array.isArray(parsed.lines) ? parsed.lines.filter(function (l) { return typeof l === 'string' && l.trim() }) : []
-    var emoji = typeof parsed.emoji_caption === 'string' ? parsed.emoji_caption : ''
-    if (lines.length > 0) {
-      return { lines: lines.slice(0, 3), emoji_caption: emoji || '🎉💪🔥' }
-    }
-  } catch (_) { }
-
-  // 尝试正则提取 JSON
-  try {
-    var jsonStr = cleaned.match(/\{[\s\S]*\}/)
-    if (jsonStr) {
-      var parsed2 = JSON.parse(jsonStr[0])
-      var lines2 = Array.isArray(parsed2.lines) ? parsed2.lines.filter(function (l) { return typeof l === 'string' && l.trim() }) : []
-      var emoji2 = typeof parsed2.emoji_caption === 'string' ? parsed2.emoji_caption : ''
-      if (lines2.length > 0) {
-        return { lines: lines2.slice(0, 3), emoji_caption: emoji2 || '🎉💪🔥' }
-      }
-    }
-  } catch (_) { }
-
-  // fallback: 逐行提取纯文案，排除 JSON 结构行
-  var rawLines = cleaned.split(/\n+/)
-    .map(function (l) { return l.trim() })
-    .filter(function (l) {
-      if (!l) return false
-      if (l.includes('{') || l.includes('}')) return false
-      if (l.includes('":') || l.includes('"lines"') || l.includes('"emoji')) return false
-      if (l.startsWith('"') && l.endsWith('",')) return false
-      return true
+    const overview = await getLatestOverview()
+    const source = buildGroundedSource(overview)
+    const idempotencyKey = normalizeRequestId(getHeader(event, 'x-request-id') || requestId)
+    const quota = await consumeAiQuota({
+      subjectId: identity.subjectId,
+      ipHash: hashValue(getClientIp(event), process.env.IP_HASH_SALT || ENV_ID),
+      requestId: idempotencyKey,
+      date: shanghaiDate().date
     })
-    .map(function (l) {
-      return l.replace(/^["'\s]+|["'\s,]+$/g, '')
-    })
-    .filter(function (l) { return l.length > 2 })
-    .slice(0, 3)
+    if (!quota.allowed) return errorResponse(429, 'RATE_LIMITED', '今日应援生成额度已用完', requestId, origin, 86400)
+    if (quota.response) return successResponse(quota.response, requestId, origin)
 
-  if (rawLines.length > 0) {
-    return { lines: rawLines, emoji_caption: '🎉💪🔥' }
-  }
-
-  // 所有解析均失败，返回 null 让调用方重试
-  return null
-}
-
-async function getLatestOverview(db) {
-  try {
-    const res = await db.collection('season_summaries')
-      .orderBy('updated_at', 'desc')
-      .limit(1)
-      .get()
-    return res.data.length > 0 ? res.data[0] : null
-  } catch (e) {
-    return null
-  }
-}
-
-async function callAI(app, systemPrompt, userPrompt) {
-  const ai = app.ai()
-  const model = ai.createModel("cloudbase")
-  const res = await model.generateText({
-    model: process.env.AI_MODEL || "hy3",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ]
-  })
-
-  if (res && res.text) {
-    return res.text
-  }
-  if (res && res.choices && res.choices.length > 0) {
-    const choice = res.choices[0]
-    if (choice.message && choice.message.content) {
-      return choice.message.content
-    }
-  }
-  throw new Error("AI response format unexpected")
-}
-
-async function getDailyLimit(db, module) {
-  const defaultLimit = 10
-  try {
-    const res = await db.collection('app_config').doc('ai_limits').get()
-    if (res.data && res.data.length > 0) {
-      const doc = res.data[0]
-      if (module === 'ask') return doc.ask_daily_limit || defaultLimit
-      if (module === 'aiCheer') return doc.cheer_daily_limit || defaultLimit
-    }
-  } catch (e) {
-    console.warn('[aiCheer] getDailyLimit failed, using default:', e.message)
-  }
-  return defaultLimit
-}
-
-async function checkUsageLimit(db, module, dailyLimit, openid) {
-  const bjNow = getBjDate()
-  const y = bjNow.getUTCFullYear()
-  const m = String(bjNow.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(bjNow.getUTCDate()).padStart(2, '0')
-  const today = `${y}-${m}-${d}`
-  const docId = openid ? `${module}_${openid}_${today}` : `${module}_${today}`
-  try {
-    const res = await db.collection('usage_limits').doc(docId).get()
-    if (res.data && res.data.length > 0) {
-      const doc = res.data[0]
-      // 限额变更时重置计数（如从旧的 500 降为 10）
-      if (doc.limit && doc.limit !== dailyLimit) {
-        await db.collection('usage_limits').doc(docId).update({ count: 1, limit: dailyLimit })
-        return true
-      }
-      if (doc.count >= dailyLimit) {
-        return false
-      }
-      await db.collection('usage_limits').doc(docId).update({ count: doc.count + 1 })
-    } else {
-      await db.collection('usage_limits').add({
-        _id: docId,
-        module,
-        openid: openid || '',
-        date: today,
-        count: 1,
-        limit: dailyLimit,
-        created_at: Date.now()
+    let generated
+    try {
+      const model = app.ai().createModel('cloudbase')
+      const result = await model.generateText({
+        model: AI_MODEL,
+        messages: [
+          { role: 'system', content: buildSystemPrompt(mood, source) },
+          { role: 'user', content: buildUserPrompt(mood, text, source) }
+        ],
+        temperature: 0.85
       })
+      generated = parseGeneratedText(result && result.text)
+      console.log('[ai-cheer] model completed', { requestId, totalTokens: result && result.usage && result.usage.total_tokens })
+    } catch (error) {
+      await markReceipt(quota.receiptId, 'failed')
+      console.error('[ai-cheer] model failed', { requestId, message: getErrorMessage(error) })
+      return errorResponse(503, 'AI_UNAVAILABLE', '文案生成暂时不可用，请稍后重试', requestId, origin)
     }
-    return true
-  } catch (e) {
-    console.warn('[aiCheer] usage limit check failed, allowing:', e.message)
-    return true
-  }
-}
 
-async function recordUsage(db, module) {
-  return true
-}
+    const safeOutput = validateGeneratedOutput(generated, source)
+    if (!safeOutput || safeOutput.lines.some(isContentBlocked) || isContentBlocked(safeOutput.emoji_caption)) {
+      await markReceipt(quota.receiptId, 'failed')
+      return errorResponse(451, 'CONTENT_BLOCKED', '生成内容未通过安全检查', requestId, origin)
+    }
 
-async function recordAIReport(db, module, userInput, aiOutput, error) {
-  try {
-    await db.collection('ai_reports').add({
-      module,
-      user_input: userInput,
-      ai_output: aiOutput,
-      error: error || null,
-      timestamp: Date.now(),
-      created_at: new Date().toISOString()
+    const reportId = randomUUID()
+    const now = new Date()
+    const sourceSnapshotAt = source.snapshotAt || now.toISOString()
+    const payload = {
+      lines: safeOutput.lines,
+      emoji_caption: safeOutput.emoji_caption,
+      report_id: reportId,
+      refs: source.refs,
+      source_snapshot_at: sourceSnapshotAt
+    }
+    await db.collection('ai_reports').doc(reportId).set({
+      _id: reportId,
+      report_id: reportId,
+      module: 'aiCheer',
+      status: 'active',
+      subject_id: identity.subjectId,
+      client_id_hash: hashValue(clientId, ENV_ID),
+      user_input: { mood, text_summary: text.slice(0, 40) },
+      ai_output: safeOutput,
+      refs: source.refs,
+      source_snapshot_at: sourceSnapshotAt,
+      timestamp: now.getTime(),
+      created_at: now.toISOString(),
+      expires_at: new Date(now.getTime() + 30 * DAY_MS).toISOString()
     })
-  } catch (e) {
-    console.warn('[aiCheer] ai report failed:', e.message)
+    await db.collection('usage_limits').doc(quota.receiptId).update({ status: 'success', response: payload, updated_at: now.toISOString() })
+    return successResponse(payload, requestId, origin)
+  } catch (error) {
+    console.error('[ai-cheer] request failed', { requestId, message: getErrorMessage(error) })
+    return errorResponse(503, 'WRITE_FAILED', '服务暂时不可用，请稍后重试', requestId, origin)
   }
 }
+
+async function getLatestOverview() {
+  const result = await db.collection('season_summaries').orderBy('updated_at', 'desc').limit(1).get()
+  return result.data && result.data.length ? result.data[0] : null
+}
+
+function buildGroundedSource(overview) {
+  if (!overview) return { refs: [], snapshotAt: '', promptLines: [] }
+  const envelope = isObject(overview.data) ? overview.data : {}
+  const data = isObject(envelope.data) ? envelope.data : envelope
+  const seasonId = typeof overview.season === 'string' ? overview.season : ''
+  const seasonStats = Array.isArray(data.season_stats)
+    ? data.season_stats.find((item) => isObject(item) && item.season_id === seasonId) || {}
+    : {}
+  const career = isObject(data.career_summary) ? data.career_summary : {}
+  const heroes = Array.isArray(data.hero_stats) ? [...data.hero_stats] : []
+  heroes.sort((a, b) => Number(b && b.battles || 0) - Number(a && a.battles || 0))
+  const refs = []
+  const promptLines = []
+  addRef(refs, promptLines, '当前赛季 KDA', seasonStats.kda_ratio ?? career.kda_ratio, 'season_summaries')
+  addRef(refs, promptLines, '当前赛季胜率', formatRate(seasonStats.win_rate ?? career.win_rate), 'season_summaries')
+  const hero = heroes.find((item) => isObject(item) && typeof item.hero_name === 'string' && item.hero_name)
+  if (hero) addRef(refs, promptLines, '常用英雄', hero.hero_name, 'season_summaries')
+  return { refs: refs.slice(0, 3), promptLines: promptLines.slice(0, 3), snapshotAt: normalizeSnapshotAt(overview.updated_at || overview.source_snapshot_at) }
+}
+
+function addRef(refs, promptLines, label, value, source) {
+  if (value === null || value === undefined || value === '' || value === '暂无') return
+  const text = String(value)
+  refs.push({ label, value: text, source })
+  promptLines.push(`${label}：${text}`)
+}
+
+function buildSystemPrompt(mood, source) {
+  return [
+    '你是 KPL 选手无言的粉丝应援文案助手。',
+    '只允许使用下方“可引用数据”中的具体数字、百分比、英雄名；没有提供的数据绝不能猜测。',
+    '输出 1 到 3 条中文短句，每条不超过 30 个汉字，并给出一句简短 emoji_caption。',
+    '不得使用传统球类运动词汇，不得声称单场 MVP、本周表现或未提供的赛程结果。',
+    `语气：${MOOD_PROMPTS[mood]}`,
+    `可引用数据：${source.promptLines.length ? source.promptLines.join('；') : '无，生成纯情绪应援文案'}`,
+    '只输出合法 JSON：{"lines":["文案"],"emoji_caption":"配文"}'
+  ].join('\n')
+}
+
+function buildUserPrompt(mood, text, source) {
+  const lines = [`心情：${MOOD_NAMES[mood]}`, `数据条目数：${source.refs.length}`]
+  if (text) lines.push(`用户补充：${text}`)
+  lines.push('请生成可直接复制发布的应援文案。')
+  return lines.join('\n')
+}
+
+function parseGeneratedText(text) {
+  if (typeof text !== 'string' || !text.trim()) return null
+  const match = text.replace(/```(?:json)?/giu, '').trim().match(/\{[\s\S]*\}/u)
+  if (!match) return null
+  try {
+    const parsed = JSON.parse(match[0])
+    const lines = Array.isArray(parsed.lines) ? parsed.lines.filter((line) => typeof line === 'string' && line.trim()).map((line) => line.trim()).slice(0, 3) : []
+    return { lines, emoji_caption: typeof parsed.emoji_caption === 'string' ? parsed.emoji_caption.trim() : '' }
+  } catch (_) { return null }
+}
+
+function validateGeneratedOutput(output, source) {
+  if (!output || !Array.isArray(output.lines) || output.lines.length < 1 || output.lines.length > 3) return null
+  if (output.lines.some((line) => !line || textLength(line) > 40)) return null
+  const allowedNumbers = new Set(source.refs.flatMap((ref) => String(ref.value).match(/\d+(?:\.\d+)?%?/gu) || []))
+  for (const line of output.lines) {
+    const numbers = line.match(/\d+(?:\.\d+)?%?/gu) || []
+    if (numbers.some((number) => !allowedNumbers.has(number))) return null
+  }
+  return { lines: output.lines, emoji_caption: output.emoji_caption || '继续并肩，为无言加油！' }
+}
+
+async function consumeAiQuota({ subjectId, ipHash, requestId, date }) {
+  const receiptId = `aiCheer_request_${hashValue(`${subjectId}:${requestId}`)}`
+  return db.runTransaction(async (transaction) => {
+    const collection = transaction.collection('usage_limits')
+    const receiptResult = await collection.doc(receiptId).get()
+    const receipt = receiptResult.data && receiptResult.data[0]
+    if (receipt) return { allowed: true, receiptId, response: receipt.response || null }
+    const limits = [
+      { id: `aiCheer_user_${hashValue(subjectId)}_${date}`, limit: readLimit('AI_USER_DAILY_LIMIT', 10), dimension: 'user' },
+      { id: `aiCheer_ip_${ipHash}_${date}`, limit: readLimit('AI_IP_DAILY_LIMIT', 30), dimension: 'ip' },
+      { id: `aiCheer_global_${date}`, limit: readLimit('AI_GLOBAL_DAILY_LIMIT', 500), dimension: 'global' }
+    ]
+    const current = []
+    for (const item of limits) {
+      const result = await collection.doc(item.id).get()
+      const doc = result.data && result.data[0]
+      const count = Number(doc && doc.count || 0)
+      if (count >= item.limit) return { allowed: false, receiptId: '' }
+      current.push({ ...item, count })
+    }
+    const now = new Date().toISOString()
+    for (const item of current) {
+      await collection.doc(item.id).set({ _id: item.id, module: 'aiCheer', dimension: item.dimension, date, count: item.count + 1, limit: item.limit, updated_at: now })
+    }
+    await collection.doc(receiptId).set({ _id: receiptId, module: 'aiCheerRequest', subject_id_hash: hashValue(subjectId, ENV_ID), request_id: requestId, status: 'pending', created_at: now })
+    return { allowed: true, receiptId, response: null }
+  })
+}
+
+async function markReceipt(receiptId, status) {
+  if (!receiptId) return
+  try { await db.collection('usage_limits').doc(receiptId).update({ status, updated_at: new Date().toISOString() }) } catch (_) { /* best effort */ }
+}
+
+function isContentBlocked(text) {
+  if (typeof text !== 'string' || !text) return false
+  const terms = String(process.env.BLOCKED_TERMS || '').split(',').map((item) => item.trim()).filter(Boolean)
+  return terms.some((term) => text.includes(term)) || DEFAULT_BLOCKED_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function normalizeRequestId(value) { return String(value || '').trim().replace(/[^a-zA-Z0-9:_-]/gu, '').slice(0, 80) || randomUUID() }
+function formatRate(value) { if (value === null || value === undefined || value === '') return ''; if (typeof value === 'string' && value.includes('%')) return value; const number = Number(value); return Number.isFinite(number) ? `${number <= 1 ? (number * 100).toFixed(1) : number.toFixed(1)}%` : '' }
+function normalizeSnapshotAt(value) { if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return new Date(value).toISOString(); if (typeof value === 'number') return new Date(value).toISOString(); return '' }
+function readLimit(name, fallback) { const value = Number(process.env[name]); return Number.isInteger(value) && value > 0 ? value : fallback }
+function textLength(value) { return Array.from(String(value || '')).length }
+function isObject(value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value) }
+function getErrorMessage(error) { return error instanceof Error ? error.message : String(error || 'unknown error') }
+
+exports.__test = { buildGroundedSource, parseGeneratedText, validateGeneratedOutput, formatRate }

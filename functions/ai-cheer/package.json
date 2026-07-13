@@ -4,6 +4,7 @@
   "description": "AI cheer text generation",
   "main": "index.js",
   "dependencies": {
-    "@cloudbase/node-sdk": "^3.16.0"
+    "@cloudbase/node-sdk": "^3.16.0",
+    "ws": "^8.18.0"
   }
 }

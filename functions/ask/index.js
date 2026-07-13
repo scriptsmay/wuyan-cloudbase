@@ -1,5 +1,9 @@
 const crypto = require('crypto')
 const cloudbase = require('@cloudbase/node-sdk')
+const {
+  ENV_ID, parseBody, getHeader, resolveIdentity, successResponse, errorResponse,
+  optionsResponse, getRequestId
+} = require('./runtime')
 
 const CACHE_TTL = 5 * 60 * 1000
 const BJ_OFFSET = 8 * 60 * 60 * 1000
@@ -18,21 +22,30 @@ function formatBjTime(startTs) {
 }
 
 exports.main = async (event, context) => {
-  const app = cloudbase.init({ env: process.env.TCB_ENV || 'trial-sh-d1gqznm4577d6a062' })
+  const requestId = getRequestId(event)
+  const origin = getHeader(event, 'origin')
+  const method = String(event.httpMethod || event.requestContext && event.requestContext.httpMethod || 'POST').toUpperCase()
+  if (method === 'OPTIONS') return optionsResponse(requestId, origin)
+  if (method !== 'POST') return errorResponse(405, 'METHOD_NOT_ALLOWED', '仅支持 POST', requestId, origin)
+
+  const app = cloudbase.init({ env: ENV_ID })
   const db = app.database()
 
-  const body = parseBody(event)
-  const query = event.queryStringParameters || {}
-  const token = query.token || body.token || event.token || ''
-  const AUTH_TOKEN = process.env.AUTH_TOKEN
-  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
-    return jsonResp(401, { code: 401, message: 'Unauthorized', data: null })
+  let body
+  try { body = parseBody(event) } catch (_) {
+    return errorResponse(400, 'INVALID_ARGUMENT', '请求体不是合法 JSON', requestId, origin)
   }
+  const query = event.queryStringParameters || {}
+  const identity = await resolveIdentity(app, event, body)
+  if (!identity.ok) return errorResponse(401, 'SESSION_REQUIRED', '匿名会话无效或已过期', requestId, origin)
 
-  const openid = event.openid || event.wxOpenid || body._cid || query._cid || event._cid || ''
   const q = (body.q || query.q || event.q || '').trim()
   if (!q) {
-    return jsonResp(400, { code: 400, message: '问题不能为空', data: null })
+    return errorResponse(400, 'INVALID_ARGUMENT', '问题不能为空', requestId, origin)
+  }
+  if (Array.from(q).length > 200) return errorResponse(400, 'INVALID_ARGUMENT', '问题不能超过 200 个字符', requestId, origin)
+  if (isContentBlocked(q)) {
+    return errorResponse(451, 'CONTENT_BLOCKED', '问题内容未通过安全检查', requestId, origin)
   }
 
   try {
@@ -40,18 +53,18 @@ exports.main = async (event, context) => {
     const cached = await getCache(db, cacheKey)
     if (cached) {
       await recordUsage(db, 'ask', 'cache')
-      return jsonResp(200, { code: 200, message: 'ok', data: cached })
+      return successResponse(cached, requestId, origin)
     }
 
     const { overviewData, liveData, scheduleData, refs } = await fetchContextData(db)
     if (!overviewData) {
-      return jsonResp(404, { code: 404, message: '暂无相关数据', data: null })
+      return errorResponse(404, 'NOT_FOUND', '暂无相关数据', requestId, origin)
     }
 
     const dailyLimit = await getDailyLimit(db, 'ask')
-    const limitOk = await checkUsageLimit(db, 'ask', dailyLimit, openid)
+    const limitOk = await checkUsageLimit(db, 'ask', dailyLimit, identity.subjectId, requestId)
     if (!limitOk) {
-      return jsonResp(429, { code: 429, message: '今日 AI 调用已达上限，请明日再来', data: null })
+      return errorResponse(429, 'RATE_LIMITED', '今日 AI 调用已达上限，请明日再来', requestId, origin, 86400)
     }
 
     const systemPrompt = buildSystemPrompt(overviewData, liveData)
@@ -62,54 +75,24 @@ exports.main = async (event, context) => {
       answer = await callAI(app, systemPrompt, userPrompt)
     } catch (aiErr) {
       console.error('[ask] AI call failed:', aiErr.message)
-      await recordAIReport(db, 'ask', q, '', aiErr.message)
-      return jsonResp(503, { code: 503, message: '小秘书暂时开小差，稍后再试～', data: null })
+      await recordAIReport(db, 'ask', identity.subjectId, q, '', aiErr.message)
+      return errorResponse(503, 'AI_UNAVAILABLE', '小秘书暂时开小差，稍后再试～', requestId, origin)
     }
 
     const result = { answer, refs }
+    if (isContentBlocked(answer)) {
+      console.warn('[ask] AI answer blocked by content safety')
+      await recordAIReport(db, 'ask', identity.subjectId, q, 'BLOCKED: ' + answer, 'content_blocked')
+      return errorResponse(451, 'CONTENT_BLOCKED', '回答内容未通过安全检查，请换个方式提问', requestId, origin)
+    }
     await setCache(db, cacheKey, q, normalize(q), result)
     await recordUsage(db, 'ask', 'ai')
-    await recordAIReport(db, 'ask', q, answer, '')
+    await recordAIReport(db, 'ask', identity.subjectId, q, answer, '')
 
-    return jsonResp(200, { code: 200, message: 'ok', data: result })
+    return successResponse(result, requestId, origin)
   } catch (err) {
     console.error('[ask] Error:', err.message, err.stack)
-    return jsonResp(500, { code: 500, message: err.message, data: null })
-  }
-}
-
-function parseBody(event) {
-  // CloudBase HTTP 函数可能把 body 放在 event.body 或直接展开在 event 上
-  if (event.body) {
-    try {
-      if (event.isBase64Encoded) {
-        const buf = Buffer.from(event.body, 'base64')
-        return JSON.parse(buf.toString('utf-8'))
-      }
-      return typeof event.body === 'string' ? JSON.parse(event.body) : event.body
-    } catch (_) {
-      // body 不是 JSON，可能是 form-urlencoded
-      try {
-        const params = new URLSearchParams(event.body)
-        const obj = {}
-        for (const [k, v] of params) obj[k] = v
-        return obj
-      } catch (_) { }
-      return {}
-    }
-  }
-  // 直接从 event 取参数（部分触发器会展开 body）
-  if (event.q || event.mood || event.text) {
-    return { q: event.q, mood: event.mood, text: event.text, token: event.token }
-  }
-  return {}
-}
-
-function jsonResp(statusCode, data) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(data)
+    return errorResponse(503, 'WRITE_FAILED', '服务暂时不可用，请稍后重试', requestId, origin)
   }
 }
 
@@ -352,11 +335,16 @@ async function callAI(app, systemPrompt, userPrompt) {
   const model = ai.createModel("cloudbase")
   const res = await model.generateText({
     model: process.env.AI_MODEL || "hy3",
+    temperature: 0.75,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ]
   })
+
+  if (res && res.usage) {
+    console.log('[ask] AI tokens used:', res.usage.total_tokens)
+  }
 
   if (res && res.text) {
     return res.text
@@ -385,41 +373,32 @@ async function getDailyLimit(db, module) {
   return defaultLimit
 }
 
-async function checkUsageLimit(db, module, dailyLimit, openid) {
+async function checkUsageLimit(db, module, dailyLimit, subjectId, requestId) {
   const bjNow = getBjDate()
   const y = bjNow.getUTCFullYear()
   const m = String(bjNow.getUTCMonth() + 1).padStart(2, '0')
   const d = String(bjNow.getUTCDate()).padStart(2, '0')
   const today = `${y}-${m}-${d}`
-  const docId = openid ? `${module}_${openid}_${today}` : `${module}_${today}`
+  const subjectHash = crypto.createHash('sha256').update(String(subjectId)).digest('hex')
+  const docId = `${module}_user_${subjectHash}_${today}`
+  const receiptId = `${module}_request_${crypto.createHash('sha256').update(`${subjectId}:${requestId}`).digest('hex')}`
   try {
-    const res = await db.collection('usage_limits').doc(docId).get()
-    if (res.data && res.data.length > 0) {
-      const doc = res.data[0]
-      // 限额变更时重置计数（如从旧的 500 降为 10）
-      if (doc.limit && doc.limit !== dailyLimit) {
-        await db.collection('usage_limits').doc(docId).update({ count: 1, limit: dailyLimit })
-        return true
-      }
-      if (doc.count >= dailyLimit) {
-        return false
-      }
-      await db.collection('usage_limits').doc(docId).update({ count: doc.count + 1 })
-    } else {
-      await db.collection('usage_limits').add({
-        _id: docId,
-        module,
-        openid: openid || '',
-        date: today,
-        count: 1,
-        limit: dailyLimit,
-        created_at: Date.now()
-      })
-    }
-    return true
+    return await db.runTransaction(async (transaction) => {
+      const collection = transaction.collection('usage_limits')
+      const receiptResult = await collection.doc(receiptId).get()
+      if (receiptResult.data && receiptResult.data.length) return true
+      const result = await collection.doc(docId).get()
+      const doc = result.data && result.data[0]
+      const count = Number(doc && doc.count || 0)
+      if (count >= dailyLimit) return false
+      const now = new Date().toISOString()
+      await collection.doc(docId).set({ _id: docId, module, dimension: 'user', date: today, count: count + 1, limit: dailyLimit, updated_at: now })
+      await collection.doc(receiptId).set({ _id: receiptId, module: `${module}Request`, request_id: requestId, subject_id_hash: subjectHash, created_at: now })
+      return true
+    })
   } catch (e) {
-    console.warn('[ask] usage limit check failed, allowing:', e.message)
-    return true
+    console.error('[ask] usage limit check failed:', e.message)
+    throw e
   }
 }
 
@@ -428,17 +407,30 @@ async function recordUsage(db, module, source) {
   return true
 }
 
-async function recordAIReport(db, module, userInput, aiOutput, error) {
+async function recordAIReport(db, module, subjectId, userInput, aiOutput, error) {
   try {
-    await db.collection('ai_reports').add({
+    const now = new Date()
+    const reportId = crypto.randomUUID()
+    await db.collection('ai_reports').doc(reportId).set({
+      _id: reportId,
+      report_id: reportId,
       module,
+      status: 'active',
+      subject_id: subjectId,
       user_input: userInput,
       ai_output: aiOutput,
       error: error || null,
-      timestamp: Date.now(),
-      created_at: new Date().toISOString()
+      timestamp: now.getTime(),
+      created_at: now.toISOString(),
+      expires_at: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
     })
   } catch (e) {
     console.warn('[ask] ai report failed:', e.message)
   }
+}
+
+function isContentBlocked(text) {
+  if (typeof text !== 'string' || !text) return false
+  const configured = String(process.env.BLOCKED_TERMS || '').split(',').map((item) => item.trim()).filter(Boolean)
+  return configured.some((term) => text.includes(term)) || [/自杀/u, /博彩/u, /色情/u, /仇恨/u].some((pattern) => pattern.test(text))
 }

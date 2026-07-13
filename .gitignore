@@ -8,3 +8,4 @@ node_modules/
 .cloudbase/
 package-lock.json
 schedule_check.json
+web/dist/
