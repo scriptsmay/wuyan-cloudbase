@@ -55,6 +55,11 @@ exports.main = async (event) => {
     if (method === 'GET' && path.endsWith('/me')) {
       return successResponse(await getMine(identity.subjectId), requestId, origin);
     }
+    if (method === 'GET' && path.endsWith('/me/report')) {
+      const report = await getMyReport(identity.subjectId);
+      if (!report) return errorResponse(404, 'NOT_FOUND', '今日还没有生成加油卡', requestId, origin);
+      return successResponse(report, requestId, origin);
+    }
     if (method === 'POST' && /\/api\/checkins\/?$/u.test(path)) {
       const clientId = normalizeClientId(body.client_id || body._cid || '');
       if (!isValidClientId(clientId))
@@ -198,6 +203,28 @@ async function withTransactionRetry(work) {
   throw lastError;
 }
 
+async function getMyReport(subjectId, database = db) {
+  const clock = shanghaiDate();
+  const checkinId = hashValue(`${subjectId}:${clock.date}`);
+  const todayResult = await database.collection('checkins').doc(checkinId).get();
+  const today = todayResult.data && todayResult.data[0];
+  const reportId = today && typeof today.report_id === 'string' ? today.report_id : '';
+  if (!reportId) return null;
+  const reportResult = await database.collection('ai_reports').doc(reportId).get();
+  const doc = reportResult.data && reportResult.data[0];
+  if (!doc) return null;
+  // 仅本人可见：归属校验失败时当未找到处理
+  if (doc.subject_id !== subjectId) return null;
+  const output = doc.ai_output || {};
+  return {
+    lines: Array.isArray(output.lines) ? output.lines : [],
+    emoji_caption: typeof output.emoji_caption === 'string' ? output.emoji_caption : '',
+    report_id: doc.report_id,
+    refs: Array.isArray(output.refs) ? output.refs : [],
+    source_snapshot_at: typeof doc.source_snapshot_at === 'string' ? doc.source_snapshot_at : '',
+  };
+}
+
 function getPath(event) {
   const candidates = [event.requestContext && event.requestContext.path, event.rawPath, event.path];
   const path = candidates.find((value) => typeof value === 'string' && value.startsWith('/') && value !== '/');
@@ -206,4 +233,4 @@ function getPath(event) {
   return typeof query.__path === 'string' ? query.__path.replace(/\/$/u, '') : '/api/checkins';
 }
 
-exports.__test = { getPath, shanghaiDate };
+exports.__test = { getPath, shanghaiDate, getMyReport };
