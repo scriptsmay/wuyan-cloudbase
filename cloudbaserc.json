@@ -110,7 +110,7 @@
         "AUTH_TOKEN": "wuyan_mini_20260710",
         "AI_MODEL": "hy3",
         "ALLOW_LOCALHOST": "true",
-        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com"
+        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },
       "triggers": []
     },
@@ -124,7 +124,7 @@
         "AUTH_TOKEN": "wuyan_mini_20260710",
         "AI_MODEL": "hy3",
         "ALLOW_LOCALHOST": "true",
-        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com"
+        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },
       "triggers": []
     },
@@ -137,7 +137,7 @@
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
         "AUTH_TOKEN": "wuyan_mini_20260710",
         "ALLOW_LOCALHOST": "true",
-        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com"
+        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },
       "triggers": []
     },
@@ -160,7 +160,7 @@
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
         "AUTH_TOKEN": "wuyan_mini_20260710",
         "ALLOW_LOCALHOST": "true",
-        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com"
+        "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },
       "triggers": []
     },

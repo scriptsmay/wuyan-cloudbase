@@ -122,7 +122,6 @@ async function setCache(db, cacheKey, q, normalizedQ, result) {
   try {
     const now = Date.now()
     const doc = {
-      _id: cacheKey,
       q,
       normalized_q: normalizedQ,
       answer: result.answer,
@@ -392,8 +391,8 @@ async function checkUsageLimit(db, module, dailyLimit, subjectId, requestId) {
       const count = Number(doc && doc.count || 0)
       if (count >= dailyLimit) return false
       const now = new Date().toISOString()
-      await collection.doc(docId).set({ _id: docId, module, dimension: 'user', date: today, count: count + 1, limit: dailyLimit, updated_at: now })
-      await collection.doc(receiptId).set({ _id: receiptId, module: `${module}Request`, request_id: requestId, subject_id_hash: subjectHash, created_at: now })
+      await collection.doc(docId).set({ module, dimension: 'user', date: today, count: count + 1, limit: dailyLimit, updated_at: now })
+      await collection.doc(receiptId).set({ module: `${module}Request`, request_id: requestId, subject_id_hash: subjectHash, created_at: now })
       return true
     })
   } catch (e) {
@@ -412,7 +411,6 @@ async function recordAIReport(db, module, subjectId, userInput, aiOutput, error)
     const now = new Date()
     const reportId = crypto.randomUUID()
     await db.collection('ai_reports').doc(reportId).set({
-      _id: reportId,
       report_id: reportId,
       module,
       status: 'active',

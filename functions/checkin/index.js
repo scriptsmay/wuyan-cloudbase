@@ -100,7 +100,6 @@ async function createCheckin(subjectId, body) {
     const totalDays = Number(user && user.total_days || 0) + 1
     const now = new Date().toISOString()
     const checkin = {
-      _id: checkinId,
       subject_id: subjectId,
       date: clock.date,
       tz: 'Asia/Shanghai',
@@ -112,7 +111,6 @@ async function createCheckin(subjectId, body) {
     }
     await checkins.doc(checkinId).set(checkin)
     await users.doc(subjectId).set({
-      _id: subjectId,
       last_date: clock.date,
       streak,
       total_days: totalDays,
@@ -122,7 +120,7 @@ async function createCheckin(subjectId, body) {
     const statResult = await stats.doc(clock.date).get()
     const stat = statResult.data && statResult.data[0]
     const todayCount = Number(stat && stat.count || 0) + 1
-    await stats.doc(clock.date).set({ _id: clock.date, date: clock.date, count: todayCount, updated_at: now })
+    await stats.doc(clock.date).set({ date: clock.date, count: todayCount, updated_at: now })
     return { checkin, already_checked_in: false, today_count: todayCount }
   })
 }
@@ -145,7 +143,7 @@ async function consumeRequestQuota(subjectId, ip) {
     }
     const now = new Date().toISOString()
     for (const item of current) {
-      await collection.doc(item.id).set({ _id: item.id, module: 'checkin', dimension: item.dimension, minute, count: item.count + 1, limit: item.limit, updated_at: now })
+      await collection.doc(item.id).set({ module: 'checkin', dimension: item.dimension, minute, count: item.count + 1, limit: item.limit, updated_at: now })
     }
     return true
   })

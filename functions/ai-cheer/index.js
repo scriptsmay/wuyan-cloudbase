@@ -97,7 +97,6 @@ exports.main = async (event) => {
       source_snapshot_at: sourceSnapshotAt
     }
     await db.collection('ai_reports').doc(reportId).set({
-      _id: reportId,
       report_id: reportId,
       module: 'aiCheer',
       status: 'active',
@@ -214,9 +213,9 @@ async function consumeAiQuota({ subjectId, ipHash, requestId, date }) {
     }
     const now = new Date().toISOString()
     for (const item of current) {
-      await collection.doc(item.id).set({ _id: item.id, module: 'aiCheer', dimension: item.dimension, date, count: item.count + 1, limit: item.limit, updated_at: now })
+      await collection.doc(item.id).set({ module: 'aiCheer', dimension: item.dimension, date, count: item.count + 1, limit: item.limit, updated_at: now })
     }
-    await collection.doc(receiptId).set({ _id: receiptId, module: 'aiCheerRequest', subject_id_hash: hashValue(subjectId, ENV_ID), request_id: requestId, status: 'pending', created_at: now })
+    await collection.doc(receiptId).set({ module: 'aiCheerRequest', subject_id_hash: hashValue(subjectId, ENV_ID), request_id: requestId, status: 'pending', created_at: now })
     return { allowed: true, receiptId, response: null }
   })
 }
