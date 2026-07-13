@@ -42,6 +42,13 @@ test('AI output rejects numbers not present in source refs', () => {
   assert.equal(cheer.__test.validateGeneratedOutput({ lines: ['4.8 的稳定就是底气'], emoji_caption: '加油' }, source).lines.length, 1)
 })
 
+test('Shanghai date is stable YYYY-MM-DD across Node locales', () => {
+  assert.deepEqual(runtime.shanghaiDate(new Date('2026-07-13T16:00:00.000Z')), {
+    date: '2026-07-14',
+    yesterday: '2026-07-13'
+  })
+})
+
 test('each deployed function owns a self-contained runtime helper', () => {
   const root = path.join(__dirname, '..', 'functions')
   const files = ['ai-cheer', 'ask', 'checkin'].map((name) => fs.readFileSync(path.join(root, name, 'runtime.js'), 'utf8'))

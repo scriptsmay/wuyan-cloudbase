@@ -118,8 +118,12 @@ function getClientIp(event) {
 }
 
 function shanghaiDate(now = new Date()) {
-  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
-  return { date: formatter.format(now), yesterday: formatter.format(new Date(now.getTime() - DAY_MS)) }
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
+  const format = (value) => {
+    const parts = Object.fromEntries(formatter.formatToParts(value).map((part) => [part.type, part.value]))
+    return `${parts.year}-${parts.month}-${parts.day}`
+  }
+  return { date: format(now), yesterday: format(new Date(now.getTime() - DAY_MS)) }
 }
 
 function normalizeClientId(value) { return String(value || '').trim().slice(0, 80) }
