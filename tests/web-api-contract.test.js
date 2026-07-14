@@ -70,6 +70,42 @@ test('AI cheer formats whole-number win rates without a trailing decimal', () =>
   assert.equal(cheer.__test.formatRate(0.523), '52.3%')
 })
 
+test('AI cheer exposes expanded season metrics and the top three heroes', () => {
+  const source = cheer.__test.buildGroundedSource({
+    season: 'KPL2026S2',
+    updated_at: '2026-07-13T20:00:04.776Z',
+    data: {
+      data: {
+        season_stats: [
+          {
+            season_id: 'KPL2026S2',
+            kda_ratio: 5,
+            win_rate: '60.0%',
+            battles: 25,
+            mvp: 6,
+            avg_assists: 4.64
+          }
+        ],
+        hero_stats: [
+          { hero_name: '狂铁', battles: 22, win_rate: '72.7%' },
+          { hero_name: '关羽', battles: 18, win_rate: '77.8%' },
+          { hero_name: '夏洛特', battles: 27, win_rate: '70.4%' },
+          { hero_name: '马超', battles: 17, win_rate: '41.2%' }
+        ]
+      }
+    }
+  })
+
+  assert.deepEqual(source.promptLines, [
+    '当前赛季 KDA：5',
+    '当前赛季胜率：60%',
+    '当前赛季对局数：25',
+    '当前赛季 MVP 次数：6',
+    '当前赛季场均助攻：4.64',
+    '常用英雄（按出场数）：夏洛特（27局，胜率70.4%）、狂铁（22局，胜率72.7%）、关羽（18局，胜率77.8%）'
+  ])
+})
+
 test('Shanghai date is stable YYYY-MM-DD across Node locales', () => {
   assert.deepEqual(runtime.shanghaiDate(new Date('2026-07-13T16:00:00.000Z')), {
     date: '2026-07-14',

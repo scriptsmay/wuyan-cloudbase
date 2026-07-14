@@ -153,20 +153,29 @@ function buildGroundedSource(overview) {
   const data = isObject(envelope.data) ? envelope.data : envelope;
   const seasonId = typeof overview.season === 'string' ? overview.season : '';
   const seasonStats = Array.isArray(data.season_stats)
-    ? data.season_stats.find((item) => isObject(item) && item.season_id === seasonId) || {}
-    : {};
+    ? data.season_stats.find((item) => isObject(item) && item.season_id === seasonId)
+    : null;
   const career = isObject(data.career_summary) ? data.career_summary : {};
+  const stats = seasonStats || career;
+  const statsLabel = seasonStats ? '当前赛季' : '生涯';
   const heroes = Array.isArray(data.hero_stats) ? [...data.hero_stats] : [];
   heroes.sort((a, b) => Number((b && b.battles) || 0) - Number((a && a.battles) || 0));
   const refs = [];
   const promptLines = [];
-  addRef(refs, promptLines, '当前赛季 KDA', seasonStats.kda_ratio ?? career.kda_ratio, 'season_summaries');
-  addRef(refs, promptLines, '当前赛季胜率', formatRate(seasonStats.win_rate ?? career.win_rate), 'season_summaries');
-  const hero = heroes.find((item) => isObject(item) && typeof item.hero_name === 'string' && item.hero_name);
-  if (hero) addRef(refs, promptLines, '常用英雄', hero.hero_name, 'season_summaries');
+  addRef(refs, promptLines, `${statsLabel} KDA`, stats.kda_ratio, 'season_summaries');
+  addRef(refs, promptLines, `${statsLabel}胜率`, formatRate(stats.win_rate), 'season_summaries');
+  addRef(refs, promptLines, `${statsLabel}对局数`, stats.battles ?? stats.total_battles, 'season_summaries');
+  addRef(refs, promptLines, `${statsLabel} MVP 次数`, stats.mvp ?? stats.mvp_count, 'season_summaries');
+  addRef(refs, promptLines, `${statsLabel}场均助攻`, stats.avg_assists, 'season_summaries');
+  const heroSummary = heroes
+    .filter((item) => isObject(item) && typeof item.hero_name === 'string' && item.hero_name)
+    .slice(0, 3)
+    .map(formatHeroSummary)
+    .join('、');
+  addRef(refs, promptLines, '常用英雄（按出场数）', heroSummary, 'season_summaries');
   return {
-    refs: refs.slice(0, 3),
-    promptLines: promptLines.slice(0, 3),
+    refs: refs.slice(0, 6),
+    promptLines: promptLines.slice(0, 6),
     snapshotAt: normalizeSnapshotAt(overview.updated_at || overview.source_snapshot_at),
   };
 }
@@ -178,6 +187,15 @@ function addRef(refs, promptLines, label, value, source) {
   promptLines.push(`${label}：${text}`);
 }
 
+function formatHeroSummary(hero) {
+  const details = [];
+  const battles = Number(hero.battles);
+  if (Number.isFinite(battles) && battles >= 0) details.push(`${battles}局`);
+  const winRate = formatRate(hero.win_rate);
+  if (winRate) details.push(`胜率${winRate}`);
+  return details.length ? `${hero.hero_name}（${details.join('，')}）` : hero.hero_name;
+}
+
 const DEFAULT_PROMPT = `
 你是 KPL 选手无言的粉丝应援文案助手。
 
@@ -187,7 +205,7 @@ const DEFAULT_PROMPT = `
 
 多条文案要从不同角度表达期待、鼓励、陪伴、认可或热血感，句式和开头不能雷同。避免套话、口号堆叠、连续感叹号，以及每句都称呼选手或粉丝群体。
 
-只允许引用下方“可引用数据”中明确提供的具体数字、百分比和英雄名；没有提供的数据不得猜测或补充。
+只允许引用下方“可引用数据”中明确提供的具体数字、百分比和英雄名；没有提供的数据不得猜测或补充。数据按语境自然选用即可，不要为了塞数据牺牲口语感。三条文案中最多两条引用数据，至少一条完全不引用数据、只表达自然情绪。
 
 必须输出 3 条中文短句，每条不超过 30 个汉字，不能多也不能少；另输出一句简短的 emoji_caption。emoji_caption 也要自然，不要复述短句。
 
