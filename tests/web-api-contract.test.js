@@ -38,8 +38,36 @@ test('bearer identity is taken from verified introspection result', async () => 
 
 test('AI output rejects numbers not present in source refs', () => {
   const source = { refs: [{ label: 'KDA', value: '4.8', source: 'season_summaries' }] }
-  assert.equal(cheer.__test.validateGeneratedOutput({ lines: ['今天冲到 10 连胜'], emoji_caption: '加油' }, source), null)
-  assert.equal(cheer.__test.validateGeneratedOutput({ lines: ['4.8 的稳定就是底气'], emoji_caption: '加油' }, source).lines.length, 1)
+  assert.equal(
+    cheer.__test.validateGeneratedOutput(
+      { lines: ['今天冲到 10 连胜', '继续向前', '期待亮相'], emoji_caption: '加油' },
+      source
+    ),
+    null
+  )
+  assert.equal(
+    cheer.__test.validateGeneratedOutput(
+      { lines: ['4.8 的稳定就是底气', '继续向前', '期待亮相'], emoji_caption: '加油' },
+      source
+    ).lines.length,
+    3
+  )
+})
+
+test('AI output requires exactly three lines', () => {
+  const source = { refs: [] }
+  assert.equal(cheer.__test.validateGeneratedOutput({ lines: ['继续向前'], emoji_caption: '加油' }, source), null)
+  assert.equal(
+    cheer.__test.validateGeneratedOutput({ lines: ['继续向前', '期待亮相'], emoji_caption: '加油' }, source),
+    null
+  )
+})
+
+test('AI cheer formats whole-number win rates without a trailing decimal', () => {
+  assert.equal(cheer.__test.formatRate(0.6), '60%')
+  assert.equal(cheer.__test.formatRate(60), '60%')
+  assert.equal(cheer.__test.formatRate('60.0%'), '60%')
+  assert.equal(cheer.__test.formatRate(0.523), '52.3%')
 })
 
 test('Shanghai date is stable YYYY-MM-DD across Node locales', () => {

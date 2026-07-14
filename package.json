@@ -8,7 +8,8 @@
     "lint": "npx eslint .",
     "lint:fix": "npx eslint . --fix",
     "format": "npx prettier --write .",
-    "format:check": "npx prettier --check ."
+    "format:check": "npx prettier --check .",
+    "preview:ai-cheer": "node --env-file=.env scripts/preview-ai-cheer.js"
   },
   "repository": {
     "type": "git",

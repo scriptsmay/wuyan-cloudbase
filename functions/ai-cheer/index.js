@@ -24,8 +24,8 @@ const ALLOWED_MOODS = new Set(['victory', 'low', 'daily', 'hope']);
 const MOOD_ALIASES = { eager: 'hope' };
 const MOOD_PROMPTS = {
   victory: '胜利时刻，全力欢呼！用追竞女孩/男孩最燃的语气庆祝，有夺冠氛围感',
-  low: '低谷时期，温暖守护。用同担之间互相打气的语气，相信选手会杀回来',
-  daily: '日常陪伴，轻松有活力。像同担在超话里聊天一样自然，元气满满地加油',
+  low: '低谷时期，温暖守护。像粉丝之间互相打气一样自然，相信选手会找回状态',
+  daily: '日常陪伴，轻松有活力。像超话里的自然分享，元气但不刻意喊口号',
   hope: '求胜时刻，热血拉满！用热血坚定的语气给下一场蓄力，气势不能输',
 };
 const MOOD_NAMES = { victory: '胜利', low: '低谷', daily: '日常', hope: '求胜' };
@@ -178,17 +178,33 @@ function addRef(refs, promptLines, label, value, source) {
   promptLines.push(`${label}：${text}`);
 }
 
+const DEFAULT_PROMPT = `
+你是 KPL 选手无言的粉丝应援文案助手。
+
+受众是 18 岁左右的追竞年轻人。文案要像粉丝在超话自然发帖：口语化、有活力、有真实情绪，不要写成官方宣传稿，也不要使用“老友”“稳重”等长辈口吻。
+
+粉圈词不是必选项。可以按语境偶尔使用“同担”“守护”“冲冲冲”“杀回来”等表达，但每个词在整次输出中最多出现一次；没有合适语境时就不用。优先通过自然的语气和节奏体现粉丝氛围。
+
+多条文案要从不同角度表达期待、鼓励、陪伴、认可或热血感，句式和开头不能雷同。避免套话、口号堆叠、连续感叹号，以及每句都称呼选手或粉丝群体。
+
+只允许引用下方“可引用数据”中明确提供的具体数字、百分比和英雄名；没有提供的数据不得猜测或补充。
+
+必须输出 3 条中文短句，每条不超过 30 个汉字，不能多也不能少；另输出一句简短的 emoji_caption。emoji_caption 也要自然，不要复述短句。
+
+不得使用传统球类运动词汇，不得声称单场 MVP、本周表现或未提供的赛程结果。
+
+参考自然程度，不要照抄：
+- 今天也期待你的下一次亮相。
+- 慢慢找回节奏，我们一直都在。
+- 热爱不会缺席，放开手去拼！
+`;
+
 function buildSystemPrompt(mood, source) {
   return [
-    '你是 KPL 选手无言的粉丝应援文案助手。',
-    '受众是 18 岁左右的追竞年轻人，用语要贴合粉圈氛围——用”同担””守护””冲冲冲””杀回来”这类词，不用”老友””朋友””稳重”等长辈口吻。',
-    '语气要有活力、有朝气，像超话里同担发帖一样自然，不用书面语。',
-    '只允许使用下方”可引用数据”中的具体数字、百分比、英雄名；没有提供的数据绝不能猜测。',
-    '输出 1 到 3 条中文短句，每条不超过 30 个汉字，并给出一句简短 emoji_caption。',
-    '不得使用传统球类运动词汇，不得声称单场 MVP、本周表现或未提供的赛程结果。',
+    DEFAULT_PROMPT,
     `语气：${MOOD_PROMPTS[mood]}`,
     `可引用数据：${source.promptLines.length ? source.promptLines.join('；') : '无，生成纯情绪应援文案'}`,
-    '只输出合法 JSON：{“lines”:[“文案”],”emoji_caption”:”配文”}',
+    '只输出合法 JSON：{"lines":["文案"],"emoji_caption":"配文"}',
   ].join('\n');
 }
 
@@ -221,7 +237,7 @@ function parseGeneratedText(text) {
 }
 
 function validateGeneratedOutput(output, source) {
-  if (!output || !Array.isArray(output.lines) || output.lines.length < 1 || output.lines.length > 3) return null;
+  if (!output || !Array.isArray(output.lines) || output.lines.length !== 3) return null;
   if (output.lines.some((line) => !line || textLength(line) > 40)) return null;
   const allowedNumbers = new Set(source.refs.flatMap((ref) => String(ref.value).match(/\d+(?:\.\d+)?%?/gu) || []));
   for (const line of output.lines) {
@@ -305,9 +321,12 @@ function normalizeRequestId(value) {
 }
 function formatRate(value) {
   if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'string' && value.includes('%')) return value;
-  const number = Number(value);
-  return Number.isFinite(number) ? `${number <= 1 ? (number * 100).toFixed(1) : number.toFixed(1)}%` : '';
+  const text = String(value).trim();
+  const hasPercentSign = text.endsWith('%');
+  const number = Number(hasPercentSign ? text.slice(0, -1) : text);
+  if (!Number.isFinite(number)) return '';
+  const percentage = hasPercentSign || number > 1 ? number : number * 100;
+  return `${Number(percentage.toFixed(1))}%`;
 }
 function normalizeSnapshotAt(value) {
   if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return new Date(value).toISOString();
@@ -328,4 +347,11 @@ function getErrorMessage(error) {
   return error instanceof Error ? error.message : String(error || 'unknown error');
 }
 
-exports.__test = { buildGroundedSource, parseGeneratedText, validateGeneratedOutput, formatRate };
+exports.__test = {
+  buildGroundedSource,
+  buildSystemPrompt,
+  buildUserPrompt,
+  parseGeneratedText,
+  validateGeneratedOutput,
+  formatRate,
+};
