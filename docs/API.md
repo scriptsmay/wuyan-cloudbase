@@ -17,10 +17,11 @@
 - [8. POST /api/ask — 小秘书智能问答](#8-post-apiask--小秘书智能问答)
 - [9. POST /api/checkins — 每日打卡](#9-post-apicheckins--每日打卡)
 - [10. GET /api/checkins/me — 我的打卡状态](#10-get-apicheckinsme--我的打卡状态)
-- [11. GET /api/checkins/stats — 今日打卡统计](#11-get-apicheckinsstats--今日打卡统计)
-- [12. GET /api/auth/me — 当前认证身份](#12-get-apiauthme--当前认证身份)
-- [13. POST /api/auth/transfer/start — 创建匿名迁移票据](#13-post-apiauthtransferstart--创建匿名迁移票据)
-- [14. POST /api/auth/transfer/complete — 完成跨端数据迁移](#14-post-apiauthtransfercomplete--完成跨端数据迁移)
+- [11. GET /api/checkins/me/report — 今日加油卡](#11-get-apicheckinsmereport--今日加油卡)
+- [12. GET /api/checkins/stats — 今日打卡统计](#12-get-apicheckinsstats--今日打卡统计)
+- [13. GET /api/auth/me — 当前认证身份](#13-get-apiauthme--当前认证身份)
+- [14. POST /api/auth/transfer/start — 创建匿名迁移票据](#14-post-apiauthtransferstart--创建匿名迁移票据)
+- [15. POST /api/auth/transfer/complete — 完成跨端数据迁移](#15-post-apiauthtransfercomplete--完成跨端数据迁移)
 
 ---
 
@@ -570,7 +571,54 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 11. GET /api/checkins/stats — 今日打卡统计
+## 11. GET /api/checkins/me/report — 今日加油卡
+
+> 云函数：`checkin` | 鉴权：Bearer Session
+
+返回当前匿名用户今日通过 AI 应援生成的加油卡内容。仅在今日已打卡关联了 `report_id` 时返回，否则返回 404。
+
+**请求**
+
+```
+GET /api/checkins/me/report
+Authorization: Bearer <access_token>
+```
+
+**响应 200**
+
+```json
+{
+  "code": 200,
+  "data": {
+    "lines": [
+      "每一天的坚持，都是通往冠军的路 💙",
+      "无言加油，我们永远是你的后盾"
+    ],
+    "emoji_caption": "陪伴是最长情的告白 💙",
+    "report_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "refs": [
+      { "label": "当前赛季 KDA", "value": "3.8", "source": "season_summaries" }
+    ],
+    "source_snapshot_at": "2026-07-13T04:00:00.000Z"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `lines` | 加油卡文案行数组 |
+| `emoji_caption` | 尾缀 Emoji 短语 |
+| `report_id` | AI 产出追溯 ID |
+| `refs` | 文案数据引用，同 `POST /api/cheer` 格式 |
+| `source_snapshot_at` | 数据快照时间 |
+
+**缓存**：无缓存，每次查询实时读取当日打卡记录和关联 AI 报告。
+
+**错误响应**：今日未打卡或打卡未关联 `report_id` 时返回 `404 NOT_FOUND`。
+
+---
+
+## 12. GET /api/checkins/stats — 今日打卡统计
 
 > 云函数：`checkin` | 鉴权：无（公开接口）
 
@@ -599,6 +647,142 @@ GET /api/checkins/stats
 
 ---
 
+## 13. GET /api/auth/me — 当前认证身份
+
+> 云函数：`auth` | 鉴权：Bearer Session（匿名/正式）
+
+返回当前会话的认证身份信息，包括 UID、用户名和登录模式。
+
+**请求**
+
+```
+GET /api/auth/me
+Authorization: Bearer <access_token>
+```
+
+**响应 200**
+
+```json
+{
+  "code": 200,
+  "data": {
+    "uid": "anon:xxx",
+    "username": "",
+    "mode": "anonymous"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `uid` | 用户唯一标识（CloudBase sub） |
+| `username` | 正式账号用户名，匿名时为空 |
+| `mode` | `"anonymous"`（匿名会话）或 `"authenticated"`（正式登录） |
+
+---
+
+## 14. POST /api/auth/transfer/start — 创建匿名迁移票据
+
+> 云函数：`auth` | 鉴权：Bearer 匿名 Session
+
+为当前匿名会话创建一次性数据迁移票据，用于将打卡记录、AI 应援报告等数据迁移到正式账号。
+
+**请求**
+
+```
+POST /api/auth/transfer/start
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+无需请求体。
+
+**响应 200**
+
+```json
+{
+  "code": 200,
+  "data": {
+    "transfer_id": "transfer_a1b2c3d4e5f6...",
+    "ticket": "base64url-ticket-string",
+    "expires_at": "2026-07-20T13:00:00.000Z",
+    "source_uid": "anon:xxx"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `transfer_id` | 迁移记录 ID（数据库文档 ID） |
+| `ticket` | 迁移票据，客户端暂存，供 `complete` 接口消费 |
+| `expires_at` | 票据过期时间（10 分钟） |
+| `source_uid` | 源匿名 UID |
+
+**错误响应**：已登录正式账号返回 `409 TRANSFER_NOT_ANONYMOUS`。
+
+---
+
+## 15. POST /api/auth/transfer/complete — 完成跨端数据迁移
+
+> 云函数：`auth` | 鉴权：Bearer 正式 Session
+
+使用迁移票据将匿名数据合并到当前正式账号。幂等：同一票据重复请求返回缓存结果，不重复迁移。
+
+**请求**
+
+```
+POST /api/auth/transfer/complete
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "ticket": "base64url-ticket-string"
+}
+```
+
+| 字段 | 类型 | 必填 | 约束 |
+|------|------|------|------|
+| `ticket` | string | 是 | `[A-Za-z0-9_-]{40,100}` |
+
+**响应 200**
+
+```json
+{
+  "code": 200,
+  "data": {
+    "transfer_id": "transfer_a1b2c3d4e5f6...",
+    "migrated": {
+      "checkins": 3,
+      "users": 1,
+      "ai_reports": 5
+    },
+    "completed_at": "2026-07-20T12:05:00.000Z"
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `migrated.checkins` | 迁移的打卡明细数 |
+| `migrated.users` | 迁移的用户统计（0 或 1） |
+| `migrated.ai_reports` | 迁移的 AI 报告数 |
+
+**并发安全**：使用 `transfer.status` 乐观锁（`pending → processing → completed`），失败自动回滚到 `pending`。
+
+**错误响应**：
+
+| HTTP | `code` | 触发条件 |
+|------|--------|---------|
+| 400 | `INVALID_ARGUMENT` | 票据格式不合法 |
+| 401 | `AUTHENTICATED_SESSION_REQUIRED` | 当前为匿名会话，需先正式登录 |
+| 404 | `TRANSFER_NOT_FOUND` | 票据不存在或已失效 |
+| 410 | `TRANSFER_EXPIRED` | 票据已过期（创建超过 10 分钟） |
+| 409 | `TRANSFER_IN_PROGRESS` | 迁移正在处理中，请稍后重试 |
+
+---
+
 ## 附录 A：鉴权矩阵
 
 | 端点 | HTTP 方法 | 鉴权 |
@@ -613,6 +797,7 @@ GET /api/checkins/stats
 | `/api/ask` | POST | Bearer Session |
 | `/api/checkins` | POST | Bearer Session |
 | `/api/checkins/me` | GET | Bearer Session |
+| `/api/checkins/me/report` | GET | Bearer Session |
 | `/api/checkins/stats` | GET | 无（CORS） |
 | `/api/auth/me` | GET | Bearer Session（匿名/正式） |
 | `/api/auth/transfer/start` | POST | Bearer 匿名 Session |
@@ -636,7 +821,7 @@ GET /api/checkins/stats
 | `live_streams` | 直播记录 | `/live`, `/story`, `/ask` |
 | `match_schedules` | 赛程缓存 | `/schedule`, `/ask` |
 | `weekly_story` | 周故事卡 | `/story` |
-| `ai_reports` | AI 产出追溯 | `/cheer`, `/ask` |
+| `ai_reports` | AI 产出追溯 | `/cheer`, `/ask`, `/checkins/me/report` |
 | `ask_cache` | 问答缓存（5min TTL） | `/ask` |
 | `checkins` | 打卡明细 | `/checkins` |
 | `checkin_users` | 个人累计 | `/checkins/me` |
@@ -651,3 +836,4 @@ GET /api/checkins/stats
 |------|------|
 | 2026-07-13 | 初始版本：基于源码逐接口提取，覆盖全部 11 个 HTTP 端点 |
 | 2026-07-13 | 修复 `.doc().set()` 中的 `_id` 字段问题，更新 `ALLOWED_ORIGINS` CORS 白名单 |
+| 2026-07-20 | 新增 `GET /api/checkins/me/report` 接口，新增认证云函数三个接口 `/api/auth/*` |
