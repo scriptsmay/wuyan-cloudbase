@@ -10,7 +10,11 @@
       "handler": "index.main",
       "envVariables": {},
       "triggers": [
-        { "name": "daily-sync", "type": "timer", "config": "0 0 4 * * * *" }
+        {
+          "name": "daily-sync",
+          "type": "timer",
+          "config": "0 0 4 * * * *"
+        }
       ]
     },
     {
@@ -40,7 +44,11 @@
       "handler": "index.main",
       "envVariables": {},
       "triggers": [
-        { "name": "daily-sync-live", "type": "timer", "config": "0 0 5 * * * *" }
+        {
+          "name": "daily-sync-live",
+          "type": "timer",
+          "config": "0 0 5 * * * *"
+        }
       ]
     },
     {
@@ -53,7 +61,11 @@
         "TCB_BUCKET": "7472-trial-sh-d1gqznm4577d6a062-1251520283"
       },
       "triggers": [
-        { "name": "daily-sync-schedule", "type": "timer", "config": "0 0 6 * * * *" }
+        {
+          "name": "daily-sync-schedule",
+          "type": "timer",
+          "config": "0 0 6 * * * *"
+        }
       ]
     },
     {
@@ -65,7 +77,11 @@
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062"
       },
       "triggers": [
-        { "name": "live-sync-schedule", "type": "timer", "config": "0 */10 * * * * *" }
+        {
+          "name": "live-sync-schedule",
+          "type": "timer",
+          "config": "0 */10 * * * * *"
+        }
       ]
     },
     {
@@ -94,10 +110,14 @@
       "timeout": 60,
       "handler": "index.main",
       "envVariables": {
-        "AI_MODEL": "hy3"
+        "AI_MODEL": "deepseek-v4-flash"
       },
       "triggers": [
-        { "name": "weekly-story-gen", "type": "timer", "config": "0 0 5 * * 1 *" }
+        {
+          "name": "weekly-story-gen",
+          "type": "timer",
+          "config": "0 0 5 * * 1 *"
+        }
       ]
     },
     {
@@ -108,7 +128,7 @@
       "envVariables": {
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
         "AUTH_TOKEN": "wuyan_mini_20260710",
-        "AI_MODEL": "hy3",
+        "AI_MODEL": "deepseek-v4-flash",
         "ALLOW_LOCALHOST": "true",
         "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },
@@ -122,7 +142,7 @@
       "envVariables": {
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
         "AUTH_TOKEN": "wuyan_mini_20260710",
-        "AI_MODEL": "hy3",
+        "AI_MODEL": "deepseek-v4-flash",
         "ALLOW_LOCALHOST": "true",
         "ALLOWED_ORIGINS": "https://wuyan-ai-cheer-trial-sh-d1gqznm4577d6a062.webapps.tcloudbase.com,https://trial-sh-d1gqznm4577d6a062-1251520283.tcloudbaseapp.com"
       },

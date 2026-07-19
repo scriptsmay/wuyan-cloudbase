@@ -107,7 +107,7 @@ async function loadGroundedSource(app) {
 }
 
 function parseArgs(args) {
-  const options = { mood: 'daily', count: 3, text: '', useData: true, showPrompt: false, help: false };
+  const options = { mood: 'daily', count: 2, text: '', useData: true, showPrompt: true, help: false };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--help' || argument === '-h') {
