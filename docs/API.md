@@ -1,6 +1,6 @@
 # wuyan-cloudbase API 接口文档
 
-> 最后更新：2026-07-13  
+> 最后更新：2026-07-20  
 > 基础域名：`https://trial-sh-d1gqznm4577d6a062-1251520283.ap-shanghai.app.tcloudbase.com`
 
 ## 目录
@@ -18,6 +18,9 @@
 - [9. POST /api/checkins — 每日打卡](#9-post-apicheckins--每日打卡)
 - [10. GET /api/checkins/me — 我的打卡状态](#10-get-apicheckinsme--我的打卡状态)
 - [11. GET /api/checkins/stats — 今日打卡统计](#11-get-apicheckinsstats--今日打卡统计)
+- [12. GET /api/auth/me — 当前认证身份](#12-get-apiauthme--当前认证身份)
+- [13. POST /api/auth/transfer/start — 创建匿名迁移票据](#13-post-apiauthtransferstart--创建匿名迁移票据)
+- [14. POST /api/auth/transfer/complete — 完成跨端数据迁移](#14-post-apiauthtransfercomplete--完成跨端数据迁移)
 
 ---
 
@@ -37,6 +40,8 @@
 3. 云函数调用 CloudBase Auth introspection API 验证 token，提取 `subject_id`
 
 **旧鉴权 token**：`wuyan_mini_20260710`（环境变量 `AUTH_TOKEN`），仅用于兼容小程序调用方。
+
+**正式账号登录**：Web 端通过 CloudBase Auth 的 `auth.signInWithPassword({ username, password })` 登录。账号只能由管理员在 CloudBase Auth 控制台预创建，前端不提供注册、手机号、短信或 OAuth 登录。
 
 ---
 
@@ -609,6 +614,9 @@ GET /api/checkins/stats
 | `/api/checkins` | POST | Bearer Session |
 | `/api/checkins/me` | GET | Bearer Session |
 | `/api/checkins/stats` | GET | 无（CORS） |
+| `/api/auth/me` | GET | Bearer Session（匿名/正式） |
+| `/api/auth/transfer/start` | POST | Bearer 匿名 Session |
+| `/api/auth/transfer/complete` | POST | Bearer 正式 Session |
 
 ## 附录 B：CORS 白名单
 
@@ -635,6 +643,7 @@ GET /api/checkins/stats
 | `checkin_daily_stats` | 每日统计 | `/checkins/stats` |
 | `usage_limits` | 限流计数器 | 全部 AI/打卡接口 |
 | `app_config` | 动态配置 | `/config` |
+| `auth_transfers` | 匿名到正式 UID 的一次性迁移票据 | `/auth/transfer/*` |
 
 ## 附录 D：变更记录
 
