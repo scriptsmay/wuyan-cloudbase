@@ -38,16 +38,24 @@ test('bearer identity is taken from verified introspection result', async () => 
 
 test('AI output rejects numbers not present in source refs', () => {
   const source = { refs: [{ label: 'KDA', value: '4.8', source: 'season_summaries' }] }
+  const validLines = [
+    '4.8 的稳定就是底气，继续保持节奏向前冲刺，我们一直在为你加油',
+    '继续向前，慢慢找回节奏，我们会一直在背后为你加油和守护每一场比赛',
+    '期待亮相，下一场也请尽情发挥自己的实力，所有努力都会有回响吧'
+  ]
   assert.equal(
     cheer.__test.validateGeneratedOutput(
-      { lines: ['今天冲到 10 连胜', '继续向前', '期待亮相'], emoji_caption: '加油' },
+      {
+        lines: ['今天冲到 10 连胜，继续保持节奏向前冲刺，我们一直在为你加油', validLines[1], validLines[2]],
+        emoji_caption: '加油'
+      },
       source
     ),
     null
   )
   assert.equal(
     cheer.__test.validateGeneratedOutput(
-      { lines: ['4.8 的稳定就是底气', '继续向前', '期待亮相'], emoji_caption: '加油' },
+      { lines: validLines, emoji_caption: '加油' },
       source
     ).lines.length,
     3
@@ -61,6 +69,19 @@ test('AI output requires exactly three lines', () => {
     cheer.__test.validateGeneratedOutput({ lines: ['继续向前', '期待亮相'], emoji_caption: '加油' }, source),
     null
   )
+})
+
+test('AI output enforces the 30-50 character line length range', () => {
+  const source = { refs: [] }
+  const makeOutput = (length) => ({
+    lines: ['字'.repeat(length), '字'.repeat(length), '字'.repeat(length)],
+    emoji_caption: '加油'
+  })
+
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(29), source), null)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(30), source).lines.length, 3)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(50), source).lines.length, 3)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(51), source), null)
 })
 
 test('AI cheer formats whole-number win rates without a trailing decimal', () => {

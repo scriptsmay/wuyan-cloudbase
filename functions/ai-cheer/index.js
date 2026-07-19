@@ -256,7 +256,7 @@ function parseGeneratedText(text) {
 
 function validateGeneratedOutput(output, source) {
   if (!output || !Array.isArray(output.lines) || output.lines.length !== 3) return null;
-  if (output.lines.some((line) => !line || textLength(line) > 40)) return null;
+  if (output.lines.some((line) => !line || textLength(line) < 30 || textLength(line) > 50)) return null;
   const allowedNumbers = new Set(source.refs.flatMap((ref) => String(ref.value).match(/\d+(?:\.\d+)?%?/gu) || []));
   for (const line of output.lines) {
     const numbers = line.match(/\d+(?:\.\d+)?%?/gu) || [];
