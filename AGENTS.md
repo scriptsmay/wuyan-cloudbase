@@ -37,6 +37,7 @@ cd web && npm run deploy
 ## Environment Variables
 
 Functions use env vars defined in `cloudbaserc.json`:
+
 - `AUTH_TOKEN` — legacy auth token for API endpoints
 - `TCB_ENV` — CloudBase environment ID
 - `ALLOWED_ORIGINS` — comma-separated CORS origins
@@ -53,5 +54,4 @@ Functions use env vars defined in `cloudbaserc.json`:
 ## Deployment
 
 - Cloud functions deploy via TCB CLI: `tcb fn deploy`
-- Web frontend: `cd web && npm run deploy` (builds, copies 404.html, deploys to TCB hosting)
 - Timer triggers defined in `cloudbaserc.json` (cron format: `0 0 4 * * * *`)
