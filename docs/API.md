@@ -79,6 +79,7 @@
 | 429 | `RATE_LIMITED` | 用户/IP/全局调用额度用尽，含 `retry_after` 秒数 |
 | 451 | `CONTENT_BLOCKED` | 输入或输出命中内容安全检查 |
 | 503 | `AI_UNAVAILABLE` | AI 模型调用失败 |
+| 503 | `AI_OUTPUT_INVALID` | 模型输出格式、条数、最小长度或数据引用不符合要求，自动重试后仍未恢复 |
 | 503 | `WRITE_FAILED` | 数据库写入或事务失败 |
 
 ---

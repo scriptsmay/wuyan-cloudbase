@@ -20,6 +20,7 @@ const {
 
 const AI_MODEL = process.env.AI_MODEL || 'hy3';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_GENERATION_ATTEMPTS = 2;
 const ALLOWED_MOODS = new Set(['victory', 'low', 'daily', 'hope']);
 const MOOD_ALIASES = { eager: 'hope' };
 const MOOD_PROMPTS = {
@@ -76,33 +77,19 @@ exports.main = async (event) => {
     if (!quota.allowed) return errorResponse(429, 'RATE_LIMITED', '今日应援生成额度已用完', requestId, origin, 86400);
     if (quota.response) return successResponse(quota.response, requestId, origin);
 
-    let generated;
-    try {
-      const model = app.ai().createModel('cloudbase');
-      const result = await model.generateText({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(mood, source) },
-          { role: 'user', content: buildUserPrompt(mood, text, source) },
-        ],
-        temperature: 0.85,
-      });
-      generated = parseGeneratedText(result && result.text);
-      console.log('[ai-cheer] model completed', {
-        requestId,
-        totalTokens: result && result.usage && result.usage.total_tokens,
-      });
-    } catch (error) {
+    const model = app.ai().createModel('cloudbase');
+    const generation = await generateValidatedOutput({ model, mood, text, source, requestId });
+    if (!generation.ok) {
       await markReceipt(quota.receiptId, 'failed');
-      console.error('[ai-cheer] model failed', { requestId, message: getErrorMessage(error) });
+      if (generation.failure.kind === 'blocked_content') {
+        return errorResponse(451, 'CONTENT_BLOCKED', '生成内容未通过安全检查', requestId, origin);
+      }
+      if (generation.failure.kind === 'invalid_output') {
+        return errorResponse(503, 'AI_OUTPUT_INVALID', '生成格式不稳定，请稍后重试', requestId, origin);
+      }
       return errorResponse(503, 'AI_UNAVAILABLE', '文案生成暂时不可用，请稍后重试', requestId, origin);
     }
-
-    const safeOutput = validateGeneratedOutput(generated, source);
-    if (!safeOutput || safeOutput.lines.some(isContentBlocked) || isContentBlocked(safeOutput.emoji_caption)) {
-      await markReceipt(quota.receiptId, 'failed');
-      return errorResponse(451, 'CONTENT_BLOCKED', '生成内容未通过安全检查', requestId, origin);
-    }
+    const safeOutput = generation.output;
 
     const reportId = randomUUID();
     const now = new Date();
@@ -141,6 +128,56 @@ exports.main = async (event) => {
     return errorResponse(503, 'WRITE_FAILED', '服务暂时不可用，请稍后重试', requestId, origin);
   }
 };
+
+async function generateValidatedOutput({
+  model,
+  mood,
+  text,
+  source,
+  requestId,
+  maxAttempts = MAX_GENERATION_ATTEMPTS,
+  logger = console,
+}) {
+  let lastFailure = { kind: 'invalid_output', reason: 'not_generated' };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const messages = [
+      { role: 'system', content: buildSystemPrompt(mood, source) },
+      { role: 'user', content: buildUserPrompt(mood, text, source) },
+    ];
+    if (attempt > 1) messages.push({ role: 'user', content: buildRetryInstruction(lastFailure) });
+
+    let result;
+    try {
+      result = await model.generateText({ model: AI_MODEL, messages, temperature: 0.85 });
+    } catch (error) {
+      lastFailure = { kind: 'model_error', reason: getErrorMessage(error) };
+      logger.warn('[ai-cheer] model attempt failed', {
+        requestId,
+        attempt,
+        message: lastFailure.reason,
+      });
+      continue;
+    }
+
+    const validation = inspectGeneratedOutput(parseGeneratedText(result && result.text), source);
+    logger.log('[ai-cheer] model completed', {
+      requestId,
+      attempt,
+      totalTokens: result && result.usage && result.usage.total_tokens,
+    });
+    if (validation.ok) return { ok: true, output: validation.output };
+
+    lastFailure = validation;
+    logger.warn('[ai-cheer] output rejected', {
+      requestId,
+      attempt,
+      reason: validation.reason,
+      lineLengths: validation.lineLengths || [],
+      unexpectedNumbers: validation.unexpectedNumbers || [],
+    });
+  }
+  return { ok: false, failure: lastFailure };
+}
 
 async function getLatestOverview() {
   const result = await db.collection('season_summaries').orderBy('updated_at', 'desc').limit(1).get();
@@ -207,7 +244,7 @@ const DEFAULT_PROMPT = `
 
 只允许引用下方“可引用数据”中明确提供的具体数字、百分比和英雄名；没有提供的数据不得猜测或补充。数据按语境自然选用即可，不要为了塞数据牺牲口语感。三条文案中最多两条引用数据，至少一条完全不引用数据、只表达自然情绪。
 
-必须输出 3 条中文短句，每条句子在30字 ~ 50字，不能多也不能少；另输出一句简短的 emoji_caption。emoji_caption 也要自然，不要复述短句。
+必须输出 3 条中文短句，每条建议 30 至 50 字且不得少于 10 字；另输出一句简短的 emoji_caption。emoji_caption 也要自然，不要复述短句。
 
 不得使用传统球类运动词汇，不得声称单场 MVP、本周表现或未提供的赛程结果。
 
@@ -222,7 +259,7 @@ function buildSystemPrompt(mood, source) {
     DEFAULT_PROMPT,
     `语气：${MOOD_PROMPTS[mood]}`,
     `可引用数据：${source.promptLines.length ? source.promptLines.join('；') : '无，生成纯情绪应援文案'}`,
-    '只输出合法 JSON：{"lines":["文案"],"emoji_caption":"配文"}',
+    '只输出合法 JSON，lines 必须恰好包含 3 个字符串：{"lines":["文案1","文案2","文案3"],"emoji_caption":"配文"}',
   ].join('\n');
 }
 
@@ -243,10 +280,7 @@ function parseGeneratedText(text) {
   try {
     const parsed = JSON.parse(match[0]);
     const lines = Array.isArray(parsed.lines)
-      ? parsed.lines
-          .filter((line) => typeof line === 'string' && line.trim())
-          .map((line) => line.trim())
-          .slice(0, 3)
+      ? parsed.lines.filter((line) => typeof line === 'string' && line.trim()).map((line) => line.trim())
       : [];
     return { lines, emoji_caption: typeof parsed.emoji_caption === 'string' ? parsed.emoji_caption.trim() : '' };
   } catch (_) {
@@ -255,14 +289,45 @@ function parseGeneratedText(text) {
 }
 
 function validateGeneratedOutput(output, source) {
-  if (!output || !Array.isArray(output.lines) || output.lines.length !== 3) return null;
-  if (output.lines.some((line) => !line || textLength(line) < 30 || textLength(line) > 50)) return null;
+  const validation = inspectGeneratedOutput(output, source);
+  return validation.ok ? validation.output : null;
+}
+
+function inspectGeneratedOutput(output, source) {
+  if (!output || !Array.isArray(output.lines) || output.lines.length !== 3) {
+    return { ok: false, kind: 'invalid_output', reason: 'line_count' };
+  }
+  const lineLengths = output.lines.map(textLength);
+  if (output.lines.some((line, index) => !line || lineLengths[index] < 10)) {
+    return { ok: false, kind: 'invalid_output', reason: 'line_length', lineLengths };
+  }
   const allowedNumbers = new Set(source.refs.flatMap((ref) => String(ref.value).match(/\d+(?:\.\d+)?%?/gu) || []));
+  const unexpectedNumbers = [];
   for (const line of output.lines) {
     const numbers = line.match(/\d+(?:\.\d+)?%?/gu) || [];
-    if (numbers.some((number) => !allowedNumbers.has(number))) return null;
+    unexpectedNumbers.push(...numbers.filter((number) => !allowedNumbers.has(number)));
   }
-  return { lines: output.lines, emoji_caption: output.emoji_caption || '继续并肩，为无言加油！' };
+  if (unexpectedNumbers.length) {
+    return { ok: false, kind: 'invalid_output', reason: 'ungrounded_number', unexpectedNumbers };
+  }
+  const safeOutput = { lines: output.lines, emoji_caption: output.emoji_caption || '⭐️ 并肩前行，为无言加油！' };
+  if (safeOutput.lines.some(isContentBlocked) || isContentBlocked(safeOutput.emoji_caption)) {
+    return { ok: false, kind: 'blocked_content', reason: 'blocked_term' };
+  }
+  return { ok: true, output: safeOutput };
+}
+
+function buildRetryInstruction(failure) {
+  if (failure.reason === 'line_length') {
+    return `上一次三条文案的字符数分别为 ${failure.lineLengths.join('、')}，请全部重新生成并确保每条至少 10 个字符，建议 30 至 50 个字符。不要解释，只输出指定 JSON。`;
+  }
+  if (failure.reason === 'ungrounded_number') {
+    return '上一次输出包含未提供的数据。请全部重新生成，只能使用“可引用数据”中的数字；不要解释，只输出指定 JSON。';
+  }
+  if (failure.kind === 'blocked_content') {
+    return '上一次输出未通过内容安全检查。请全部重新生成正常、积极的粉丝应援文案；不要解释，只输出指定 JSON。';
+  }
+  return '上一次输出格式不符合要求。请全部重新生成恰好 3 条、每条至少 10 个字符的文案；不要解释，只输出指定 JSON。';
 }
 
 async function consumeAiQuota({ subjectId, ipHash, requestId, date }) {
@@ -371,5 +436,7 @@ exports.__test = {
   buildUserPrompt,
   parseGeneratedText,
   validateGeneratedOutput,
+  inspectGeneratedOutput,
+  generateValidatedOutput,
   formatRate,
 };

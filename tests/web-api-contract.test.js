@@ -71,17 +71,70 @@ test('AI output requires exactly three lines', () => {
   )
 })
 
-test('AI output enforces the 30-50 character line length range', () => {
+test('AI output requires at least 10 characters and tolerates longer natural copy', () => {
   const source = { refs: [] }
   const makeOutput = (length) => ({
     lines: ['字'.repeat(length), '字'.repeat(length), '字'.repeat(length)],
     emoji_caption: '加油'
   })
 
-  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(29), source), null)
-  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(30), source).lines.length, 3)
-  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(50), source).lines.length, 3)
-  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(51), source), null)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(9), source), null)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(10), source).lines.length, 3)
+  assert.equal(cheer.__test.validateGeneratedOutput(makeOutput(54), source).lines.length, 3)
+})
+
+test('AI output inspection reports short lines without misclassifying them as blocked content', () => {
+  const output = {
+    lines: ['字'.repeat(37), '字'.repeat(9), '字'.repeat(44)],
+    emoji_caption: '继续加油'
+  }
+  assert.deepEqual(cheer.__test.inspectGeneratedOutput(output, { refs: [] }), {
+    ok: false,
+    kind: 'invalid_output',
+    reason: 'line_length',
+    lineLengths: [37, 9, 44]
+  })
+})
+
+test('AI generation retries one invalid response and returns the corrected output', async () => {
+  const responses = [
+    { text: JSON.stringify({ lines: ['字'.repeat(30), '太短', '字'.repeat(30)], emoji_caption: '加油' }) },
+    { text: JSON.stringify({ lines: ['字'.repeat(30), '字'.repeat(40), '字'.repeat(54)], emoji_caption: '加油' }) }
+  ]
+  let calls = 0
+  const result = await cheer.__test.generateValidatedOutput({
+    model: { generateText: async () => responses[calls++] },
+    mood: 'daily',
+    text: '',
+    source: { refs: [], promptLines: [] },
+    requestId: 'retry-invalid-output',
+    logger: { log() {}, warn() {} }
+  })
+
+  assert.equal(calls, 2)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.output.lines.map((line) => Array.from(line).length), [30, 40, 54])
+})
+
+test('AI generation retries a transient model timeout', async () => {
+  let calls = 0
+  const result = await cheer.__test.generateValidatedOutput({
+    model: {
+      generateText: async () => {
+        calls += 1
+        if (calls === 1) throw new Error('request timeout')
+        return { text: JSON.stringify({ lines: ['字'.repeat(30), '字'.repeat(30), '字'.repeat(30)] }) }
+      }
+    },
+    mood: 'daily',
+    text: '',
+    source: { refs: [], promptLines: [] },
+    requestId: 'retry-model-timeout',
+    logger: { log() {}, warn() {} }
+  })
+
+  assert.equal(calls, 2)
+  assert.equal(result.ok, true)
 })
 
 test('AI cheer formats whole-number win rates without a trailing decimal', () => {

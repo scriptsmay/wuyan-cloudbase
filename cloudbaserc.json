@@ -137,7 +137,7 @@
     {
       "name": "ai-cheer",
       "runtime": "Nodejs18.15",
-      "timeout": 60,
+      "timeout": 120,
       "handler": "index.main",
       "envVariables": {
         "TCB_ENV": "trial-sh-d1gqznm4577d6a062",
