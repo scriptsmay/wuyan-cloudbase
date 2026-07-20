@@ -10,6 +10,7 @@
     "format": "npx prettier --write .",
     "format:check": "npx prettier --check .",
     "preview:ai-cheer": "node --env-file=.env scripts/preview-ai-cheer.js",
+    "deploy:ai-cheer": "tcb fn deploy get-config --force && tcb fn deploy auth --force && tcb fn deploy ai-cheer --force && tcb fn deploy ask --force && tcb fn deploy checkin --force",
     "deploy": "tcb fn deploy"
   },
   "repository": {
