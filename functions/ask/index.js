@@ -27,7 +27,7 @@ function formatBjTime(startTs) {
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${hh}:${mm}`;
 }
 
-exports.main = async (_event, _context) => {
+exports.main = async (event, _context) => {
   const requestId = getRequestId(event);
   const origin = getHeader(event, 'origin');
   const method = String(
