@@ -29,3 +29,8 @@ test('makeCheckinId is deterministic for the same subject and business date', ()
   assert.equal(makeCheckinId('user-1', '2026-07-21'), makeCheckinId('user-1', '2026-07-21'));
   assert.notEqual(makeCheckinId('user-1', '2026-07-21'), makeCheckinId('user-1', '2026-07-22'));
 });
+
+test('checkin entrypoint retains hashValue for request quota keys', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../functions/checkin/index'), 'utf8');
+  assert.match(source, /\bhashValue\s*,\s*\n\}\s*=\s*require\('\.\/runtime'\)/u);
+});

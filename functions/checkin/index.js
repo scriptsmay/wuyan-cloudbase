@@ -33,6 +33,7 @@ const {
   shanghaiDate,
   normalizeClientId,
   isValidClientId,
+  hashValue,
 } = require('./runtime');
 const { makeCheckinId, computeCheckinSummary } = require('./summary');
 
