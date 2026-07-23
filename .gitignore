@@ -4,9 +4,13 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# AI agents
 .trae/
 .cloudbase/
+.mimocode/
+.workbuddy/
+
 package-lock.json
 schedule_check.json
 web/dist/
-.mimocode/
